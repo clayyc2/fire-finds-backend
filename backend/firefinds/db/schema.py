@@ -279,8 +279,7 @@ def init_db(db_path: Path | str) -> sqlite3.Connection:
     conn.executescript(EBAY_COMPETITION_DDL)
     conn.executescript(RANKED_QUEUE_DDL)
     conn.executescript(SHIPPING_QUOTES_DDL)
-    for ddl in INDEXES_DDL:
-        conn.execute(ddl)
+    # Migrate additive columns BEFORE indexes that reference them (eligible, etc.)
     migrate_schema(conn)
     conn.commit()
     return conn
