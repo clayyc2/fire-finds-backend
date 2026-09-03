@@ -22,6 +22,10 @@ from firefinds.services_queue import (
 )
 from firefinds.services_quote import quote_eligible_skus
 from firefinds.scoring.shipping import InjectedQuoteProvider
+from firefinds.pipelines.snapshot import freeze_shipping_snapshot, snapshot_stamp_from_progress
+from firefinds.pipelines.cohorts import split_randmar_cohorts
+from firefinds.pipelines.authorize import authorize_and_draft_survivors
+from firefinds.discovery.ebay_demand import discover_ebay_demand_first
 
 
 def cmd_ingest_stub(_args: argparse.Namespace) -> int:
@@ -164,6 +168,101 @@ def cmd_health(_args: argparse.Namespace) -> int:
         print("# WARNING: a live gate is ON", file=sys.stderr)
         return 3
     return 0
+
+
+def cmd_freeze_shipping_snapshot(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    import subprocess
+    from pathlib import Path as _P
+    import json as _json
+
+    git_head = None
+    try:
+        git_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(_P(settings.db_path).resolve().parents[1]),
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        git_head = None
+    snap_id = args.snapshot_id
+    if not snap_id:
+        progress_path = _P(settings.db_path).parent / "shipping_quote_progress.json"
+        progress = {}
+        if progress_path.is_file():
+            progress = _json.loads(progress_path.read_text(encoding="utf-8"))
+        snap_id = snapshot_stamp_from_progress(progress)
+    meta = freeze_shipping_snapshot(
+        settings=settings, snapshot_id=snap_id, git_head=git_head
+    )
+    print(json.dumps(meta, indent=2, default=str))
+    return 0
+
+
+def cmd_split_cohorts(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    result = split_randmar_cohorts(
+        settings=settings, snapshot_id=args.snapshot_id
+    )
+    print(json.dumps(result["summary"], indent=2, default=str))
+    return 0
+
+
+def cmd_authorize_drafts(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    result = authorize_and_draft_survivors(
+        settings=settings, snapshot_id=args.snapshot_id
+    )
+    print(json.dumps(result["summary"], indent=2, default=str))
+    return 0
+
+
+def cmd_ebay_demand_discover(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    result = discover_ebay_demand_first(
+        settings=settings, snapshot_id=args.snapshot_id
+    )
+    print(json.dumps(result["summary"], indent=2, default=str))
+    return 0
+
+
+def cmd_pipeline_freeze_split_draft(args: argparse.Namespace) -> int:
+    """A+B+C+D convenience: freeze → split → authorize drafts → scaffold EDF."""
+    settings = get_settings()
+    import subprocess
+    from pathlib import Path as _P
+    import json as _json
+
+    git_head = None
+    try:
+        git_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(_P(settings.db_path).resolve().parents[1]),
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        git_head = None
+    progress_path = _P(settings.db_path).parent / "shipping_quote_progress.json"
+    progress = {}
+    if progress_path.is_file():
+        progress = _json.loads(progress_path.read_text(encoding="utf-8"))
+    snap_id = args.snapshot_id or snapshot_stamp_from_progress(progress)
+    freeze = freeze_shipping_snapshot(
+        settings=settings, snapshot_id=snap_id, git_head=git_head
+    )
+    cohorts = split_randmar_cohorts(settings=settings, snapshot_id=snap_id)
+    drafts = authorize_and_draft_survivors(settings=settings, snapshot_id=snap_id)
+    edf = discover_ebay_demand_first(settings=settings, snapshot_id=snap_id)
+    out = {
+        "snapshot_id": snap_id,
+        "freeze": freeze,
+        "cohorts": cohorts["summary"],
+        "drafts": drafts["summary"],
+        "ebay_demand_first": edf["summary"],
+    }
+    print(json.dumps(out, indent=2, default=str))
+    return 0
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -316,6 +415,46 @@ def build_parser() -> argparse.ArgumentParser:
         "health", help="DB / gates / secrets-presence / last-ingest check"
     )
     p_health.set_defaults(func=cmd_health)
+
+
+    p_freeze = sub.add_parser(
+        "freeze-shipping-snapshot",
+        help="Freeze immutable shipping-complete snapshot under data/snapshots/",
+    )
+    p_freeze.add_argument(
+        "--snapshot-id",
+        default=None,
+        help="Override stamp YYYYMMDD_HHMM (default from progress.updated_at Edmonton)",
+    )
+    p_freeze.set_defaults(func=cmd_freeze_shipping_snapshot)
+
+    p_split = sub.add_parser(
+        "split-cohorts",
+        help="Split ranked_queue into SAFE_NATIONWIDE / DESTINATION_SENSITIVE + quarantine",
+    )
+    p_split.add_argument("--snapshot-id", required=True)
+    p_split.set_defaults(func=cmd_split_cohorts)
+
+    p_auth = sub.add_parser(
+        "authorize-drafts",
+        help="MAP/channel authorize survivors and write drafts (never publish)",
+    )
+    p_auth.add_argument("--snapshot-id", required=True)
+    p_auth.set_defaults(func=cmd_authorize_drafts)
+
+    p_edf = sub.add_parser(
+        "ebay-demand-discover",
+        help="EBAY_DEMAND_FIRST discovery (provisional until official eBay keys)",
+    )
+    p_edf.add_argument("--snapshot-id", required=True)
+    p_edf.set_defaults(func=cmd_ebay_demand_discover)
+
+    p_pipe = sub.add_parser(
+        "pipeline-freeze-split-draft",
+        help="Freeze snapshot + split cohorts + authorize drafts + scaffold EDF",
+    )
+    p_pipe.add_argument("--snapshot-id", default=None)
+    p_pipe.set_defaults(func=cmd_pipeline_freeze_split_draft)
 
     return parser
 

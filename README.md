@@ -110,10 +110,38 @@ PYTHONPATH=. python -m firefinds.cli.main validate-queue   # ALL eligible (p75 d
 PYTHONPATH=. python -m firefinds.cli.main ebay-compete     # alias
 PYTHONPATH=. python -m firefinds.cli.main listable-export
 PYTHONPATH=. python -m firefinds.cli.main ebay-sandbox-status
+PYTHONPATH=. python -m firefinds.cli.main freeze-shipping-snapshot
+PYTHONPATH=. python -m firefinds.cli.main split-cohorts --snapshot-id YYYYMMDD_HHMM
+PYTHONPATH=. python -m firefinds.cli.main authorize-drafts --snapshot-id YYYYMMDD_HHMM
+PYTHONPATH=. python -m firefinds.cli.main ebay-demand-discover --snapshot-id YYYYMMDD_HHMM
+PYTHONPATH=. python -m firefinds.cli.main pipeline-freeze-split-draft
 ```
 
 `--inject-ship CAD` is **test-only** to inject a resolved shipping cost. Production
 must use Randmar quote endpoints.
+
+
+## Dual pipelines
+
+| Tag | Meaning |
+|-----|---------|
+| `pipeline_source=RANDMAR_FIRST` | Eligible Randmar catalog → shipping → competition → ranked |
+| `pipeline_source=EBAY_DEMAND_FIRST` | Repeated eBay CA sold demand → catalog match → economics |
+
+Cohorts: `SAFE_NATIONWIDE` (finally profitable, not destination-sensitive),
+`DESTINATION_SENSITIVE` (`fails_expensive_destinations`), 
+`QUARANTINE_UNRESOLVED` (unresolved shipping — never sellable).
+
+Every candidate row carries `pipeline_source`, `cohort`, `comparison_cohort_id`,
+and empty A/B metric columns (`sell_through`, `time_to_first_sale`,
+`contribution_profit_realized`, `cancellations`, `returns`) for later comparison.
+
+`EBAY_DEMAND_FIRST` is scaffolded with provisional public flags until official
+eBay OAuth keys arrive (`EBAY_SELLING_LIMIT` is a soft placeholder only).
+
+Drafts under `data/drafts/randmar_first/` are local Inventory API payloads —
+**never published** while `LIVE_LISTINGS_ENABLED` / `EBAY_SANDBOX_PUBLISH_ENABLED`
+remain false.
 
 ## Tests
 

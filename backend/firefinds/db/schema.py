@@ -149,6 +149,50 @@ CREATE TABLE IF NOT EXISTS shipping_quotes (
 );
 """
 
+
+CANDIDATE_COHORTS_DDL = """
+CREATE TABLE IF NOT EXISTS candidate_cohorts (
+    sku TEXT NOT NULL,
+    pipeline_source TEXT NOT NULL,
+    cohort TEXT NOT NULL,
+    comparison_cohort_id TEXT NOT NULL,
+    snapshot_id TEXT NOT NULL,
+    rank INTEGER,
+    fails_expensive_destinations INTEGER DEFAULT 0,
+    listable_profit REAL,
+    listable_margin REAL,
+    sell_comp REAL,
+    map REAL,
+    ship_p75 REAL,
+    shipping_status TEXT,
+    sell_through REAL,
+    time_to_first_sale REAL,
+    contribution_profit_realized REAL,
+    cancellations INTEGER,
+    returns INTEGER,
+    detail_json TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (sku, pipeline_source, snapshot_id)
+);
+"""
+
+QUARANTINE_UNRESOLVED_DDL = """
+CREATE TABLE IF NOT EXISTS quarantine_unresolved_shipping (
+    sku TEXT NOT NULL,
+    pipeline_source TEXT NOT NULL DEFAULT 'RANDMAR_FIRST',
+    snapshot_id TEXT NOT NULL,
+    shipping_status TEXT,
+    listable_pass INTEGER DEFAULT 0,
+    score REAL,
+    map REAL,
+    stock INTEGER,
+    reason TEXT,
+    comparison_cohort_id TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (sku, pipeline_source, snapshot_id)
+);
+"""
+
 INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_products_score ON products(score DESC);",
     "CREATE INDEX IF NOT EXISTS idx_products_score_pass ON products(score_pass);",
@@ -162,6 +206,9 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_ebay_comp_sku ON ebay_competition(sku);",
     "CREATE INDEX IF NOT EXISTS idx_ranked_queue_rank ON ranked_queue(rank);",
     "CREATE INDEX IF NOT EXISTS idx_shipping_quotes_sku ON shipping_quotes(sku);",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_cohorts_cohort ON candidate_cohorts(cohort);",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_cohorts_pipeline ON candidate_cohorts(pipeline_source);",
+    "CREATE INDEX IF NOT EXISTS idx_quarantine_unresolved_sku ON quarantine_unresolved_shipping(sku);",
 ]
 
 PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
@@ -212,6 +259,12 @@ PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("fails_expensive_destinations", "INTEGER DEFAULT 0"),
     ("failed_expensive_destinations", "TEXT"),
     ("dest_quotes_json", "TEXT"),
+    ("pipeline_source", "TEXT"),
+    ("cohort", "TEXT"),
+    ("comparison_cohort_id", "TEXT"),
+    ("map_ok", "INTEGER"),
+    ("channel_ok", "INTEGER"),
+    ("needs_manual_channel_review", "INTEGER"),
 ]
 
 RANKED_QUEUE_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
@@ -219,6 +272,9 @@ RANKED_QUEUE_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("shipping_status", "TEXT"),
     ("fails_expensive_destinations", "INTEGER DEFAULT 0"),
     ("failed_expensive_destinations", "TEXT"),
+    ("pipeline_source", "TEXT"),
+    ("cohort", "TEXT"),
+    ("comparison_cohort_id", "TEXT"),
 ]
 
 
@@ -260,6 +316,8 @@ def migrate_schema(conn: sqlite3.Connection) -> list[str]:
     conn.executescript(EBAY_COMPETITION_DDL)
     conn.executescript(RANKED_QUEUE_DDL)
     conn.executescript(SHIPPING_QUOTES_DDL)
+    conn.executescript(CANDIDATE_COHORTS_DDL)
+    conn.executescript(QUARANTINE_UNRESOLVED_DDL)
     rq_cols = _existing_columns(conn, "ranked_queue")
     for name, decl in RANKED_QUEUE_COLUMN_MIGRATIONS:
         if name not in rq_cols:
@@ -279,6 +337,8 @@ def init_db(db_path: Path | str) -> sqlite3.Connection:
     conn.executescript(EBAY_COMPETITION_DDL)
     conn.executescript(RANKED_QUEUE_DDL)
     conn.executescript(SHIPPING_QUOTES_DDL)
+    conn.executescript(CANDIDATE_COHORTS_DDL)
+    conn.executescript(QUARANTINE_UNRESOLVED_DDL)
     # Migrate additive columns BEFORE indexes that reference them (eligible, etc.)
     migrate_schema(conn)
     conn.commit()

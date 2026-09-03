@@ -154,6 +154,9 @@ class Settings:
     ebay_min_comp_listings: int = 1
     # Soft export/display limit only — NEVER truncates the ranked queue.
     listable_export_limit: int = 0  # 0 = no limit
+    # Soft eBay account selling-limit placeholder (0 = unlimited).
+    # Never hard-truncates ranked candidates; used for export metadata only.
+    ebay_selling_limit: int = 0
     allow_provisional_listable: bool = True
     monthly_demand_baseline: float = 4.0
     # Shipping quotes (final listable requires RESOLVED quote — no flat default)
@@ -240,6 +243,7 @@ class Settings:
             ebay_comp_top_n=_env_int("EBAY_COMP_TOP_N", 10),
             ebay_min_comp_listings=_env_int("EBAY_MIN_COMP_LISTINGS", 1),
             listable_export_limit=_env_int("LISTABLE_EXPORT_LIMIT", 0),
+            ebay_selling_limit=_env_int("EBAY_SELLING_LIMIT", 0),
             allow_provisional_listable=_env_bool(
                 "ALLOW_PROVISIONAL_LISTABLE", True
             ),
