@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "firefinds"
+version = "0.1.0"
+description = "Fire Finds interim backend scaffold"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+firefinds = "firefinds.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["firefinds*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+pythonpath = ["."]
