@@ -122,7 +122,30 @@ CREATE TABLE IF NOT EXISTS ranked_queue (
     provisional_public_ebay INTEGER DEFAULT 0,
     needs_official_ebay_validation INTEGER DEFAULT 1,
     reason TEXT,
+    ship_p75 REAL,
+    shipping_status TEXT,
+    fails_expensive_destinations INTEGER DEFAULT 0,
+    failed_expensive_destinations TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+SHIPPING_QUOTES_DDL = """
+CREATE TABLE IF NOT EXISTS shipping_quotes (
+    sku TEXT NOT NULL,
+    dest_id TEXT NOT NULL,
+    city TEXT,
+    province TEXT,
+    postal_code TEXT,
+    cost_cad REAL,
+    status TEXT,
+    warehouse TEXT,
+    carrier TEXT,
+    method_id TEXT,
+    source TEXT,
+    quoted_at TEXT NOT NULL DEFAULT (datetime('now')),
+    detail_json TEXT,
+    PRIMARY KEY (sku, dest_id)
 );
 """
 
@@ -138,6 +161,7 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_actions_sku ON actions(sku);",
     "CREATE INDEX IF NOT EXISTS idx_ebay_comp_sku ON ebay_competition(sku);",
     "CREATE INDEX IF NOT EXISTS idx_ranked_queue_rank ON ranked_queue(rank);",
+    "CREATE INDEX IF NOT EXISTS idx_shipping_quotes_sku ON shipping_quotes(sku);",
 ]
 
 PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
@@ -183,6 +207,18 @@ PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("dedupe_kept", "INTEGER DEFAULT 1"),
     ("shipping_status", "TEXT"),
     ("final_profitability", "INTEGER DEFAULT 0"),
+    ("ship_p75", "REAL"),
+    ("ship_quote_n", "INTEGER DEFAULT 0"),
+    ("fails_expensive_destinations", "INTEGER DEFAULT 0"),
+    ("failed_expensive_destinations", "TEXT"),
+    ("dest_quotes_json", "TEXT"),
+]
+
+RANKED_QUEUE_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
+    ("ship_p75", "REAL"),
+    ("shipping_status", "TEXT"),
+    ("fails_expensive_destinations", "INTEGER DEFAULT 0"),
+    ("failed_expensive_destinations", "TEXT"),
 ]
 
 
@@ -223,6 +259,13 @@ def migrate_schema(conn: sqlite3.Connection) -> list[str]:
         )
     conn.executescript(EBAY_COMPETITION_DDL)
     conn.executescript(RANKED_QUEUE_DDL)
+    conn.executescript(SHIPPING_QUOTES_DDL)
+    rq_cols = _existing_columns(conn, "ranked_queue")
+    for name, decl in RANKED_QUEUE_COLUMN_MIGRATIONS:
+        if name not in rq_cols:
+            ddl = f"ALTER TABLE ranked_queue ADD COLUMN {name} {decl}"
+            conn.execute(ddl)
+            applied.append(ddl)
     for ddl in INDEXES_DDL:
         conn.execute(ddl)
     conn.commit()
@@ -235,6 +278,7 @@ def init_db(db_path: Path | str) -> sqlite3.Connection:
     conn.executescript(ACTIONS_DDL)
     conn.executescript(EBAY_COMPETITION_DDL)
     conn.executescript(RANKED_QUEUE_DDL)
+    conn.executescript(SHIPPING_QUOTES_DDL)
     for ddl in INDEXES_DDL:
         conn.execute(ddl)
     migrate_schema(conn)

@@ -19,6 +19,7 @@ firefinds/
     listings/drafts.py     # Inventory API-shaped drafts (never publish)
     services.py            # ingest / score / rank
     services_queue.py      # validate ALL eligible → ranked queue
+    services_quote.py      # checkpointed multi-dest quotes (p75)
     cli/main.py
   tests/
 ```
@@ -38,14 +39,41 @@ firefinds/
 account/API confirms Fire Finds qualifies for that rate.
 
 Final `listable_pass` / `final_profitability` require `shipping_status=RESOLVED`
-from a Randmar **read-only** quote:
+from Randmar **read-only** quotes across representative Canadian destinations:
 
-- `POST .../Cart/ShippingMethods/{cartName}` (after AddItem; **never** `Cart/Process*`)
+| City | Province | Postal |
+|------|----------|--------|
+| Calgary | AB | T2P 1J9 |
+| Vancouver | BC | V6B 1A1 |
+| Toronto | ON | M5H 2N2 |
+| Montreal | QC | H3B 1A7 |
+| Halifax | NS | B3J 1S9 |
+
+Endpoints (never `Cart/Process*`):
+
+- `POST .../Cart/ShippingMethods/{cartName}` (after AddItem)
 - `POST .../ShippingLabel/Estimate`
-- `POST .../Order/{orderNumber}/ShipVia/Estimate` (existing orders only)
+
+`ShipToLocation` fields sent: Name, Street1, Street2 (may be empty), City,
+Province (2-letter), PostalCode, Country (`CA`). OpenAPI marks them nullable
+but Cart/ShippingMethods requires that subset (`additionalProperties: false`).
+
+**Profitability shipping cost = 75th percentile** of resolved dest quotes for
+that SKU (not mean, not min). Fewer than 5 resolved → p75 over whatever
+resolved. **Zero resolved → `UNRESOLVED` → not finally profitable.**
+
+SKUs whose $8 / 12% floors fail in expensive dests even when p75 passes are
+flagged `fails_expensive_destinations=true` with the failing cities listed.
+They can still rank on p75; the flag is a warning for far-coast buyers.
+
+**Fulfillment will later use the buyer's actual postal code** for the real
+quote. These five dests are screening proxies only.
 
 If a quote cannot be obtained → `shipping_status=UNRESOLVED` → SKU is **not**
 finally listable. `SHIP_EST_CAD` is only a rough early `score_pass` placeholder.
+Per-dest rows persist in `shipping_quotes` (+ `data/shipping_quote_progress.json`
+checkpoint). `quote-shipping --limit N` for tests; omit `--limit` for the full
+eligible set. Resume is the default.
 
 ## Eligible → ranked queue (no hard SKU cap)
 
@@ -77,7 +105,8 @@ PYTHONPATH=. python -m firefinds.cli.main health
 PYTHONPATH=. python -m firefinds.cli.main ingest-stub
 PYTHONPATH=. python -m firefinds.cli.main ingest-live   # read-only
 PYTHONPATH=. python -m firefinds.cli.main score
-PYTHONPATH=. python -m firefinds.cli.main validate-queue   # ALL eligible
+PYTHONPATH=. python -m firefinds.cli.main quote-shipping [--limit N] [--rebuild-queue]
+PYTHONPATH=. python -m firefinds.cli.main validate-queue   # ALL eligible (p75 dest quotes)
 PYTHONPATH=. python -m firefinds.cli.main ebay-compete     # alias
 PYTHONPATH=. python -m firefinds.cli.main listable-export
 PYTHONPATH=. python -m firefinds.cli.main ebay-sandbox-status

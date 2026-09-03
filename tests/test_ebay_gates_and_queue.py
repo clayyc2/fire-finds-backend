@@ -159,3 +159,53 @@ def test_health_and_cli(settings: Settings, monkeypatch, tmp_path: Path, capsys)
     assert rc == 0
     out = capsys.readouterr().out
     assert "live_listings_enabled" in out
+
+
+def test_validate_queue_flags_expensive_destinations(settings: Settings):
+    ingest_stub(settings)
+    snap = CompetitionSnapshot(
+        query="stub",
+        query_type="upc",
+        item_count=5,
+        lowest_price=100.0,
+        median_price=110.0,
+        sample_url="https://ebay.ca/itm/1",
+    )
+    conn = init_db(settings.db_path)
+    rows = conn.execute("SELECT sku FROM products WHERE score_pass=1").fetchall()
+    fixtures = {r["sku"]: snap for r in rows}
+    ebay = MagicMock()
+    ebay.require_credentials.side_effect = EbayCredentialsMissing("missing")
+    provider = InjectedQuoteProvider(
+        dest_costs={
+            "calgary": 10.0,
+            "vancouver": 12.0,
+            "toronto": 15.0,
+            "montreal": 20.0,
+            "halifax": 80.0,
+        }
+    )
+    out = validate_eligible_queue(
+        settings=settings,
+        ebay=ebay,
+        quote_provider=provider,
+        fixture_competition=fixtures,
+        dry_run=False,
+        write_drafts=False,
+    )
+    assert out["summary"]["listable_pass_count"] >= 1
+    flagged = [
+        r
+        for r in out["survivors"]
+        if int(r.get("fails_expensive_destinations") or 0) == 1
+    ]
+    assert flagged, "expected at least one SKU flagged for Halifax"
+    cities = flagged[0]["failed_expensive_destinations"]
+    assert "Halifax" in cities
+    row = conn.execute(
+        "SELECT ship_p75, fails_expensive_destinations, failed_expensive_destinations "
+        "FROM products WHERE sku=?",
+        (flagged[0]["sku"],),
+    ).fetchone()
+    assert row["fails_expensive_destinations"] == 1
+    assert row["ship_p75"] is not None

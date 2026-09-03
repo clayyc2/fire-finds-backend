@@ -165,6 +165,7 @@ class Settings:
     ship_to_province: str = "ON"
     ship_to_postal_code: str = "M5E1E5"
     ship_to_country: str = "CA"
+    ship_quote_sleep_sec: float = 0.35
     # Return-risk
     return_risk_heavy_weight_lb: float = 30.0
     return_risk_high_msrp_cad: float = 1500.0
@@ -257,6 +258,7 @@ class Settings:
                 "SHIP_TO_POSTAL_CODE", "M5E1E5"
             ),
             ship_to_country=os.environ.get("SHIP_TO_COUNTRY", "CA"),
+            ship_quote_sleep_sec=_env_float("SHIP_QUOTE_SLEEP_SEC", 0.35),
             return_risk_heavy_weight_lb=_env_float(
                 "RETURN_RISK_HEAVY_WEIGHT_LB", 30.0
             ),

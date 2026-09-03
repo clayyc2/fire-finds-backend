@@ -165,7 +165,13 @@ class RandmarClient:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"{label} failed with HTTP {exc.code}") from None
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")[:240]
+            except Exception:
+                body = ""
+            suffix = f": {body}" if body else ""
+            raise RuntimeError(f"{label} failed with HTTP {exc.code}{suffix}") from None
         except urllib.error.URLError as exc:
             raise RuntimeError(f"{label} failed: {exc.reason}") from None
         if not raw.strip():
@@ -254,18 +260,10 @@ class RandmarClient:
         url = self._reseller_path(
             f"/Cart/ShippingMethods/{quote(cart_name, safe='')}"
         )
-        # ShipToDetails: { ShipTo: { Name, Street1, Street2, City, Province, PostalCode, Country } }
-        body = {
-            "ShipTo": {
-                "Name": ship_to.get("Name") or ship_to.get("name") or "Fire Finds Estimate",
-                "Street1": ship_to.get("Street1") or ship_to.get("street1") or "",
-                "Street2": ship_to.get("Street2") or ship_to.get("street2") or "",
-                "City": ship_to.get("City") or ship_to.get("city") or "",
-                "Province": ship_to.get("Province") or ship_to.get("province") or "",
-                "PostalCode": ship_to.get("PostalCode") or ship_to.get("postal_code") or "",
-                "Country": ship_to.get("Country") or ship_to.get("country") or "CA",
-            }
-        }
+        # ShipToDetails.ShipTo = ShipToLocation (additionalProperties=false).
+        from firefinds.scoring.shipping import shipto_for_api
+
+        body = {"ShipTo": shipto_for_api(ship_to)}
         return self._request_json(
             "POST",
             url,
@@ -310,6 +308,54 @@ class RandmarClient:
             except Exception:
                 pass
 
+    def estimate_cart_shipping_multi(
+        self,
+        sku: str,
+        *,
+        ship_tos: list[dict[str, Any]],
+        cart_prefix: str = "ff-ship-quote",
+        quantity: int = 1,
+        sleep_sec: float = 0.0,
+    ):
+        """Add SKU once, quote ShippingMethods for each dest, delete cart.
+
+        Never calls Cart/Process*. Returns list[ShippingQuote] aligned to ship_tos.
+        """
+        import time
+
+        from firefinds.scoring.shipping import (
+            ShippingQuote,
+            parse_cart_shipping_methods,
+        )
+
+        cart_name = f"{cart_prefix}-{sku}"[:80]
+        quotes = []
+        try:
+            try:
+                self.cart_delete(cart_name)
+            except Exception:
+                pass
+            self.cart_add_item_default(cart_name, sku, quantity=quantity)
+            for i, ship_to in enumerate(ship_tos):
+                if i and sleep_sec > 0:
+                    time.sleep(float(sleep_sec))
+                try:
+                    payload = self.cart_shipping_methods(cart_name, ship_to)
+                    quotes.append(parse_cart_shipping_methods(payload))
+                except Exception as exc:  # noqa: BLE001
+                    quotes.append(
+                        ShippingQuote.unresolved(
+                            reason=f"cart_shipping_methods_error:{type(exc).__name__}",
+                            source="cart_shipping_methods",
+                        )
+                    )
+            return quotes
+        finally:
+            try:
+                self.cart_delete(cart_name)
+            except Exception:
+                pass
+
     def estimate_shipping_label(
         self,
         product: dict[str, Any],
@@ -338,15 +384,9 @@ class RandmarClient:
                 warehouse=wh,
                 source="shipping_label_estimate",
             )
-        to_addr = {
-            "Name": ship_to.get("Name") or "Fire Finds Estimate",
-            "Street1": ship_to.get("Street1") or "",
-            "Street2": ship_to.get("Street2") or "",
-            "City": ship_to.get("City") or "",
-            "Province": ship_to.get("Province") or "",
-            "PostalCode": ship_to.get("PostalCode") or "",
-            "Country": ship_to.get("Country") or "CA",
-        }
+        from firefinds.scoring.shipping import shipto_for_api
+
+        to_addr = shipto_for_api(ship_to)
         details = {
             "From": origin,
             "To": to_addr,

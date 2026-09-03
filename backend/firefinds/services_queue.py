@@ -26,12 +26,21 @@ from firefinds.scoring.dedupe import dedupe_products
 from firefinds.scoring.identifiers import normalize_product_ids
 from firefinds.scoring.return_risk import evaluate_return_risk
 from firefinds.scoring.shipping import (
+    FULFILLMENT_NOTE,
     InjectedQuoteProvider,
-    RandmarQuoteProvider,
     ShippingQuote,
     ShippingQuoteProvider,
     compute_landed_cost_with_quote,
+    flag_expensive_destinations,
     pick_fulfillment_warehouse,
+    quote_representative_destinations,
+)
+from firefinds.services_quote import (
+    CachedQuoteProvider,
+    default_quote_provider,
+    load_cached_bundle,
+    persist_destination_quotes,
+    sku_quote_complete,
 )
 
 
@@ -110,9 +119,14 @@ def validate_eligible_queue(
     write_drafts: bool = True,
     drafts_dir: Path | None = None,
     fixture_competition: dict[str, CompetitionSnapshot] | None = None,
+    use_cached_quotes: bool = False,
+    sleep_sec: float | None = None,
+    resume_quotes: bool = True,
 ) -> dict[str, Any]:
     """Run full validation over ALL eligible SKUs; persist ranked_queue.
 
+    Shipping cost for profitability is the 75th percentile of representative
+    destination quotes (not mean, not min). Zero resolved dests → UNRESOLVED.
     Returns summary dict. Does not publish listings. Does not place orders.
     """
     settings = settings or get_settings()
@@ -134,17 +148,21 @@ def validate_eligible_queue(
         )
 
     if quote_provider is None:
-        if settings.ship_quote_enabled:
-            try:
-                from firefinds.clients.randmar import RandmarClient
-
-                quote_provider = RandmarQuoteProvider(RandmarClient(settings))
-            except Exception:  # noqa: BLE001
-                quote_provider = InjectedQuoteProvider()
+        live = default_quote_provider(settings)
+        if use_cached_quotes:
+            quote_provider = CachedQuoteProvider(conn, fallback=None if use_cached_quotes else live)
         else:
-            quote_provider = InjectedQuoteProvider()
+            quote_provider = live
 
-    ship_to = _ship_to(settings)
+    sleep = (
+        0.0
+        if isinstance(quote_provider, InjectedQuoteProvider)
+        else (
+            float(sleep_sec)
+            if sleep_sec is not None
+            else float(getattr(settings, "ship_quote_sleep_sec", 0.35))
+        )
+    )
     rows = load_eligible_products(conn, limit=limit)
     logger.log(
         "validate_queue",
@@ -220,14 +238,44 @@ def validate_eligible_queue(
             results.append(row_out)
             continue
 
-        # Shipping quote (required for final)
-        try:
-            quote: ShippingQuote = quote_provider.quote_product(row, ship_to=ship_to)
-        except Exception as exc:  # noqa: BLE001
-            quote = ShippingQuote.unresolved(
-                reason=f"provider_error:{type(exc).__name__}",
-                warehouse=pick_fulfillment_warehouse(row),
-            )
+        # Multi-dest shipping quotes; p75 is the profitability cost.
+        bundle = None
+        if resume_quotes or use_cached_quotes:
+            if sku_quote_complete(conn, sku):
+                bundle = load_cached_bundle(conn, sku)
+        if bundle is None:
+            try:
+                bundle = quote_representative_destinations(
+                    quote_provider, row, sleep_sec=sleep
+                )
+            except Exception as exc:  # noqa: BLE001
+                quote = ShippingQuote.unresolved(
+                    reason=f"provider_error:{type(exc).__name__}",
+                    warehouse=pick_fulfillment_warehouse(row),
+                )
+                from firefinds.scoring.shipping import (
+                    DestinationQuote,
+                    MultiDestQuote,
+                    REPRESENTATIVE_DESTINATIONS,
+                )
+                bundle = MultiDestQuote(
+                    status="UNRESOLVED",
+                    shipping_cost_cad=None,
+                    p75_cad=None,
+                    quotes=tuple(
+                        DestinationQuote(
+                            destination=d,
+                            quote=quote,
+                        )
+                        for d in REPRESENTATIVE_DESTINATIONS
+                    ),
+                    resolved_n=0,
+                    unresolved_n=len(REPRESENTATIVE_DESTINATIONS),
+                    dest_costs={},
+                )
+            persist_destination_quotes(conn, sku, bundle)
+            conn.commit()
+        quote = bundle.as_quote()
         landed, quote = compute_landed_cost_with_quote(row, quote)
         logger.log(
             "shipping_quote",
@@ -235,10 +283,14 @@ def validate_eligible_queue(
             decision=quote.status,
             detail={
                 "cost_cad": quote.cost_cad,
+                "p75_cad": bundle.p75_cad,
+                "resolved_n": bundle.resolved_n,
+                "dest_costs": bundle.dest_costs,
                 "source": quote.source,
                 "warehouse": quote.warehouse,
                 "carrier": quote.carrier,
                 "reason": (quote.detail or {}).get("reason"),
+                "fulfillment_note": FULFILLMENT_NOTE,
             },
             source="validate-queue",
         )
@@ -322,7 +374,33 @@ def validate_eligible_queue(
             "final_profitability": 1 if margin.final_profitability else 0,
             "dedupe_kept": 1,
             "opportunity_only": 1 if row.get("opportunity_only") else 0,
+            "ship_p75": bundle.p75_cad,
+            "ship_quote_n": bundle.resolved_n,
+            "dest_quotes_json": json.dumps(
+                {
+                    "p75_cad": bundle.p75_cad,
+                    "dest_costs": bundle.dest_costs,
+                    "fulfillment_note": FULFILLMENT_NOTE,
+                },
+                default=str,
+            ),
         }
+        flag = flag_expensive_destinations(
+            bundle.dest_costs,
+            sell_price=float(margin.sell_comp or 0.0),
+            net_cost=float(product_for_eval.get("net_cost") or 0.0),
+            rebate=float(row.get("rebate") or 0.0),
+            min_profit_cad=settings.min_contribution_profit_cad,
+            min_margin=settings.min_contribution_margin,
+            ebay_fee_rate=settings.ebay_fee_rate,
+            ebay_fee_fixed=settings.ebay_fee_fixed,
+        )
+        row_out["fails_expensive_destinations"] = (
+            1 if flag.fails_expensive_destinations else 0
+        )
+        row_out["failed_expensive_destinations"] = json.dumps(
+            list(flag.failed_cities)
+        )
         results.append(row_out)
 
     # Mark dropped dupes
@@ -372,6 +450,11 @@ def validate_eligible_queue(
         "ebay_credentials_present": credentials_ok,
         "dry_run": dry_run,
         "top_skus": [r.get("sku") for r in survivors[:25]],
+        "fails_expensive_destinations_count": sum(
+            1 for r in survivors if int(r.get("fails_expensive_destinations") or 0)
+        ),
+        "fulfillment_note": FULFILLMENT_NOTE,
+        "shipping_model": "p75_of_representative_destinations",
     }
 
     if dry_run:
@@ -426,6 +509,11 @@ def validate_eligible_queue(
         "qty_laval",
         "qty_edmonton",
         "net_cost",
+        "ship_p75",
+        "ship_quote_n",
+        "fails_expensive_destinations",
+        "failed_expensive_destinations",
+        "dest_quotes_json",
     ]
     # Ensure shipping_status column via migrate (may need add)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
@@ -493,8 +581,10 @@ def validate_eligible_queue(
                 rank, sku, rank_score, expected_monthly_contribution_profit,
                 sales_probability, sell_comp, listable_profit, listable_margin,
                 map, stock, provisional_public_ebay,
-                needs_official_ebay_validation, reason, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                needs_official_ebay_validation, reason,
+                ship_p75, shipping_status, fails_expensive_destinations,
+                failed_expensive_destinations, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """,
             (
                 r.get("listable_rank"),
@@ -510,6 +600,10 @@ def validate_eligible_queue(
                 int(r.get("provisional_public_ebay") or 0),
                 int(r.get("needs_official_ebay_validation") or 1),
                 r.get("listable_reason"),
+                r.get("ship_p75"),
+                r.get("shipping_status"),
+                int(r.get("fails_expensive_destinations") or 0),
+                r.get("failed_expensive_destinations"),
             ),
         )
     conn.commit()
@@ -553,6 +647,13 @@ def validate_eligible_queue(
                         ),
                         "needs_official_ebay_validation": bool(
                             r.get("needs_official_ebay_validation")
+                        ),
+                        "ship_p75": r.get("ship_p75"),
+                        "fails_expensive_destinations": bool(
+                            r.get("fails_expensive_destinations")
+                        ),
+                        "failed_expensive_destinations": r.get(
+                            "failed_expensive_destinations"
                         ),
                     }
                     for r in survivors
@@ -632,7 +733,9 @@ def health_check(*, settings: Settings | None = None) -> dict[str, Any]:
         },
         "last_ingest": dict(last_ingest) if last_ingest else None,
         "shipping_policy": (
-            "Final listable requires RESOLVED Randmar shipping quote; "
-            "no marketing flat-rate default."
+            "Final listable requires RESOLVED Randmar quotes across representative "
+            "destinations; profitability shipping cost is the 75th percentile of "
+            "resolved dests. Fulfillment later uses the buyer's actual postal code. "
+            "No marketing flat-rate default."
         ),
     }

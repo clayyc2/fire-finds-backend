@@ -20,6 +20,7 @@ from firefinds.services_queue import (
     health_check,
     validate_eligible_queue,
 )
+from firefinds.services_quote import quote_eligible_skus
 from firefinds.scoring.shipping import InjectedQuoteProvider
 
 
@@ -94,6 +95,9 @@ def cmd_ebay_compete(args: argparse.Namespace) -> int:
         limit=args.limit,
         dry_run=args.dry_run,
         write_drafts=not args.dry_run,
+        use_cached_quotes=bool(getattr(args, "use_cached_quotes", False)),
+        sleep_sec=getattr(args, "sleep", None),
+        resume_quotes=not bool(getattr(args, "no_resume", False)),
     )
     summary = result["summary"]
     print(json.dumps(summary, indent=2, default=str))
@@ -116,6 +120,36 @@ def cmd_listable_export(args: argparse.Namespace) -> int:
     rows = export_listable_json(settings=settings, limit=args.limit)
     print(json.dumps(rows, indent=2, default=str))
     print(f"# listable-export: {len(rows)} rows", file=sys.stderr)
+    return 0
+
+
+def cmd_quote_shipping(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    quote_provider = None
+    if args.inject_ship is not None:
+        quote_provider = InjectedQuoteProvider(default_cost=float(args.inject_ship))
+    summary = quote_eligible_skus(
+        settings=settings,
+        quote_provider=quote_provider,
+        limit=args.limit,
+        sleep_sec=args.sleep,
+        resume=not args.no_resume,
+        force=args.force,
+    )
+    print(json.dumps(summary, indent=2, default=str))
+    if args.rebuild_queue:
+        result = validate_eligible_queue(
+            settings=settings,
+            quote_provider=quote_provider,
+            limit=args.limit,
+            dry_run=False,
+            write_drafts=True,
+            use_cached_quotes=True,
+            sleep_sec=0.0,
+            resume_quotes=True,
+        )
+        print(json.dumps(result["summary"], indent=2, default=str))
+        summary = result["summary"]
     return 0
 
 
@@ -193,6 +227,22 @@ def build_parser() -> argparse.ArgumentParser:
                 "Production must use Randmar quote endpoints."
             ),
         )
+        p.add_argument(
+            "--sleep",
+            type=float,
+            default=None,
+            help="Seconds between destination quote calls (rate limit)",
+        )
+        p.add_argument(
+            "--use-cached-quotes",
+            action="store_true",
+            help="Use persisted shipping_quotes (p75) instead of live quoting",
+        )
+        p.add_argument(
+            "--no-resume",
+            action="store_true",
+            help="Re-quote even if shipping_quotes already has all dests",
+        )
 
     p_compete = sub.add_parser(
         "ebay-compete",
@@ -207,6 +257,48 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_queue_args(p_vq)
     p_vq.set_defaults(func=cmd_validate_queue)
+
+    p_quote = sub.add_parser(
+        "quote-shipping",
+        help=(
+            "Quote representative dests for eligible SKUs (p75 shipping); "
+            "checkpoint/resume; never Process"
+        ),
+    )
+    p_quote.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional SKU cap for testing; default = ALL eligible",
+    )
+    p_quote.add_argument(
+        "--sleep",
+        type=float,
+        default=None,
+        help="Seconds between dest quote calls (default SHIP_QUOTE_SLEEP_SEC)",
+    )
+    p_quote.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Ignore checkpoint and re-quote",
+    )
+    p_quote.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-quote SKUs even if dest quotes already persist",
+    )
+    p_quote.add_argument(
+        "--rebuild-queue",
+        action="store_true",
+        help="After quoting, rebuild ranked_queue using cached p75 quotes",
+    )
+    p_quote.add_argument(
+        "--inject-ship",
+        type=float,
+        default=None,
+        help="TEST ONLY: inject a resolved shipping cost (CAD) for all dests",
+    )
+    p_quote.set_defaults(func=cmd_quote_shipping)
 
     p_export = sub.add_parser(
         "listable-export",
