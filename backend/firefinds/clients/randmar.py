@@ -203,7 +203,163 @@ class RandmarClient:
             label="Randmar InstantRebates",
         )
 
+
+    # --- read-only shipping quotes (never Process / place order) -----------
+
+    def cart_add_item_default(
+        self,
+        cart_name: str,
+        sku: str,
+        *,
+        quantity: int = 1,
+    ) -> Any:
+        """POST Cart/AddItem/.../DefaultOpportunity — mutates quote cart only."""
+        from urllib.parse import quote
+
+        cart = quote(cart_name, safe="")
+        sku_q = quote(str(sku), safe="")
+        url = self._reseller_path(
+            f"/Cart/AddItem/{cart}/{sku_q}/DefaultOpportunity"
+        )
+        qs = urllib.parse.urlencode({"quantity": int(quantity)})
+        url = f"{url}?{qs}"
+        return self._request_json(
+            "POST", url, data=b"", timeout=60, label="Randmar Cart/AddItem"
+        )
+
+    def cart_get(self, cart_name: str) -> Any:
+        from urllib.parse import quote
+
+        url = self._reseller_path(f"/Cart/{quote(cart_name, safe='')}")
+        return self._request_json(
+            "GET", url, timeout=60, label="Randmar Cart/GET"
+        )
+
+    def cart_delete(self, cart_name: str) -> Any:
+        from urllib.parse import quote
+
+        url = self._reseller_path(f"/Cart/{quote(cart_name, safe='')}")
+        return self._request_json(
+            "DELETE", url, timeout=60, label="Randmar Cart/DELETE"
+        )
+
+    def cart_shipping_methods(
+        self,
+        cart_name: str,
+        ship_to: dict[str, Any],
+    ) -> Any:
+        """POST Cart/ShippingMethods — quote only; never Process."""
+        from urllib.parse import quote
+
+        url = self._reseller_path(
+            f"/Cart/ShippingMethods/{quote(cart_name, safe='')}"
+        )
+        # ShipToDetails: { ShipTo: { Name, Street1, Street2, City, Province, PostalCode, Country } }
+        body = {
+            "ShipTo": {
+                "Name": ship_to.get("Name") or ship_to.get("name") or "Fire Finds Estimate",
+                "Street1": ship_to.get("Street1") or ship_to.get("street1") or "",
+                "Street2": ship_to.get("Street2") or ship_to.get("street2") or "",
+                "City": ship_to.get("City") or ship_to.get("city") or "",
+                "Province": ship_to.get("Province") or ship_to.get("province") or "",
+                "PostalCode": ship_to.get("PostalCode") or ship_to.get("postal_code") or "",
+                "Country": ship_to.get("Country") or ship_to.get("country") or "CA",
+            }
+        }
+        return self._request_json(
+            "POST",
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            timeout=90,
+            label="Randmar Cart/ShippingMethods",
+        )
+
+    def shipping_label_estimate(self, shipment_details: dict[str, Any]) -> Any:
+        """POST ShippingLabel/Estimate — quote only; never Generate."""
+        url = self._reseller_path("/ShippingLabel/Estimate")
+        return self._request_json(
+            "POST",
+            url,
+            data=json.dumps(shipment_details).encode("utf-8"),
+            timeout=90,
+            label="Randmar ShippingLabel/Estimate",
+        )
+
+    def estimate_cart_shipping(
+        self,
+        sku: str,
+        *,
+        ship_to: dict[str, Any],
+        cart_prefix: str = "ff-ship-quote",
+        quantity: int = 1,
+    ):
+        """Add SKU to ephemeral cart, quote ShippingMethods, delete cart.
+
+        Never calls Cart/Process*. Returns ShippingQuote.
+        """
+        from firefinds.scoring.shipping import parse_cart_shipping_methods
+
+        cart_name = f"{cart_prefix}-{sku}"[:80]
+        try:
+            self.cart_add_item_default(cart_name, sku, quantity=quantity)
+            payload = self.cart_shipping_methods(cart_name, ship_to)
+            return parse_cart_shipping_methods(payload)
+        finally:
+            try:
+                self.cart_delete(cart_name)
+            except Exception:
+                pass
+
+    def estimate_shipping_label(
+        self,
+        product: dict[str, Any],
+        *,
+        ship_to: dict[str, Any],
+        warehouse: str | None = None,
+    ):
+        """ShippingLabel/Estimate using warehouse origin + UnitWeight."""
+        from firefinds.scoring.shipping import (
+            WAREHOUSE_ORIGINS,
+            parse_shipvia_estimates,
+            pick_fulfillment_warehouse,
+        )
+
+        wh = warehouse or pick_fulfillment_warehouse(product)
+        origin = WAREHOUSE_ORIGINS.get(wh or "", WAREHOUSE_ORIGINS["Toronto"])
+        try:
+            weight = float(product.get("unit_weight") or product.get("UnitWeight") or 0)
+        except (TypeError, ValueError):
+            weight = 0.0
+        if weight <= 0:
+            from firefinds.scoring.shipping import ShippingQuote
+
+            return ShippingQuote.unresolved(
+                reason="missing_unit_weight_for_label_estimate",
+                warehouse=wh,
+                source="shipping_label_estimate",
+            )
+        to_addr = {
+            "Name": ship_to.get("Name") or "Fire Finds Estimate",
+            "Street1": ship_to.get("Street1") or "",
+            "Street2": ship_to.get("Street2") or "",
+            "City": ship_to.get("City") or "",
+            "Province": ship_to.get("Province") or "",
+            "PostalCode": ship_to.get("PostalCode") or "",
+            "Country": ship_to.get("Country") or "CA",
+        }
+        details = {
+            "From": origin,
+            "To": to_addr,
+            "NumberOfBoxes": 1,
+            "TotalWeight": weight,
+            "ReferenceNumber": str(product.get("sku") or ""),
+            "WithZPLThermalShippingLabels": False,
+        }
+        payload = self.shipping_label_estimate(details)
+        return parse_shipvia_estimates(payload)
+
     def place_order(self, *_args: Any, **_kwargs: Any) -> None:
+
         """Order placement — gated OFF by default."""
         if not self.settings.supplier_orders_enabled:
             raise SupplierOrdersDisabled(
@@ -248,6 +404,17 @@ def normalize_randmar_product(
     stock = raw.get("AvailableQuantity")
     if stock is None:
         stock = raw.get("stock")
+    def _qi(key: str) -> int:
+        try:
+            return int(raw.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    try:
+        unit_weight = float(raw.get("UnitWeight") or 0) or None
+    except (TypeError, ValueError):
+        unit_weight = None
+
     return {
         "sku": str(sku) if sku is not None else "",
         "upc": raw.get("UPC") or raw.get("upc"),
@@ -258,6 +425,16 @@ def normalize_randmar_product(
         "dealer_cost": dealer,
         "rebate": rebate,
         "stock": stock if stock is not None else 0,
-        "landed_cost": dealer,
+        "landed_cost": dealer,  # net only until shipping quote resolves
+        "net_cost": dealer,
         "title": raw.get("Title") or raw.get("RandmarTitle"),
+        "category": raw.get("Category") or raw.get("category"),
+        "product_type": raw.get("ProductType") or raw.get("product_type"),
+        "opportunity_only": bool(raw.get("OpportunityOnly") or False),
+        "unit_weight": unit_weight,
+        "qty_montreal": _qi("QuantityMontreal"),
+        "qty_toronto": _qi("QuantityToronto"),
+        "qty_vancouver": _qi("QuantityVancouver"),
+        "qty_laval": _qi("QuantityLaval"),
+        "qty_edmonton": _qi("QuantityEdmonton"),
     }

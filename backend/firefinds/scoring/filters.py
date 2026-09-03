@@ -103,7 +103,7 @@ def score_product(
     """Apply deterministic gates: profit >= 8 CAD, margin >= 12%, stock > buffer.
 
     Sell price = MAP else 0.95*MSRP. Landed cost prefers landed_cost, else
-    dealer_cost. Fee placeholders: 13.25% + $0.30 and $10 shipping.
+    dealer_cost. Fee placeholders: 13.25% + $0.30; ship_est_cad is a ROUGH early-score placeholder only — final listable requires a RESOLVED Randmar shipping quote.
     Score is contribution_profit when all gates pass, else 0.
     """
     th = thresholds or ScoreThresholds()

@@ -7,77 +7,84 @@ Python package lives under `backend/firefinds/`.
 
 ```
 firefinds/
-  .env.example          # CLIENT_ID + CLIENT_SECRET_FILE + feature gates
-  .gitignore            # .env, secrets/, data/, *.db, …
-  secrets/              # mode 700 — Integration key secret (never commit)
-  data/                 # live dumps / SQLite (gitignored)
-  backend/
-    firefinds/
-      config.py
-      db/schema.py
-      scoring/filters.py
-      action_log/logger.py
-      clients/randmar.py   # token + Products/JSON POST + InstantRebates GET
-      services.py          # ingest-stub / ingest-live / score / rank
-      cli/main.py
+  .env.example
+  secrets/                 # mode 700 — never commit
+  data/                    # SQLite / exports (gitignored)
+  backend/firefinds/
+    config.py
+    db/schema.py           # products + ebay_competition + ranked_queue
+    scoring/               # filters, shipping quotes, ids, dedupe, return-risk, competition
+    clients/randmar.py     # catalog + read-only shipping quotes (never Process)
+    clients/ebay.py        # Browse compete + gated Sell stubs
+    listings/drafts.py     # Inventory API-shaped drafts (never publish)
+    services.py            # ingest / score / rank
+    services_queue.py      # validate ALL eligible → ranked queue
+    cli/main.py
   tests/
 ```
-
-## Secrets
-
-- `Settings.from_env()` auto-loads `PROJECT_ROOT/.env` (does not override already-set env vars). Quote spaced values: `RANDMAR_CLIENT_ID="Fire Finds catalog read"`.
-- `RANDMAR_CLIENT_ID` = Integration key **name**; defaults to `Fire Finds catalog read` when unset (also `secrets/randmar_client_id.txt`)
-- `RANDMAR_CLIENT_SECRET_FILE` = path to secret file under `secrets/`
-  (default `secrets/randmar_api_key.txt`)
-
-Never commit `.env`, `secrets/`, `data/`, or `*.db`. The client never logs
-secret or token values.
 
 ## Feature gates (default OFF)
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `LIVE_LISTINGS_ENABLED` | false | Live listing pushes gated |
-| `SUPPLIER_ORDERS_ENABLED` | false | Order methods / `place-order` refuse |
-| `EBAY_PRODUCTION_ENABLED` | false | Production eBay gated |
+| `LIVE_LISTINGS_ENABLED` | false | Sell inventory/offer/publish refuse |
+| `EBAY_SANDBOX_PUBLISH_ENABLED` | false | Publish refused even in sandbox |
+| `SUPPLIER_ORDERS_ENABLED` | false | Order / Cart Process refuse |
+| `EBAY_PRODUCTION_ENABLED` | false | Production Sell gated |
 
-## Scoring filters (deterministic)
+## Shipping (hard rule)
 
-A product **passes** only when all hold:
+**Do not treat $10 (or any marketing rate) as true shipping** unless the dealer
+account/API confirms Fire Finds qualifies for that rate.
 
-1. `contribution_profit >= MIN_CONTRIBUTION_PROFIT_CAD` (default **8** CAD)
-2. `contribution_margin >= MIN_CONTRIBUTION_MARGIN` (default **0.12**)
-3. `stock > STOCK_BUFFER` (default **2**)
+Final `listable_pass` / `final_profitability` require `shipping_status=RESOLVED`
+from a Randmar **read-only** quote:
 
-Sell price = **MAP** if MAP > 0, else **0.95 × MSRP**.
+- `POST .../Cart/ShippingMethods/{cartName}` (after AddItem; **never** `Cart/Process*`)
+- `POST .../ShippingLabel/Estimate`
+- `POST .../Order/{orderNumber}/ShipVia/Estimate` (existing orders only)
 
-```
-fees = sell * 0.1325 + 0.30
-contribution_profit = sell - fees - 10 - landed_cost + rebate
-contribution_margin = contribution_profit / sell
-```
+If a quote cannot be obtained → `shipping_status=UNRESOLVED` → SKU is **not**
+finally listable. `SHIP_EST_CAD` is only a rough early `score_pass` placeholder.
 
-Landed cost prefers `landed_cost`, else `dealer_cost` (Randmar `Price`).
+## Eligible → ranked queue (no hard SKU cap)
 
-## Setup
+1. Load **all** eligible (`eligible=1` / `score_pass=1`, ~513 today)
+2. Normalize UPC/MPN (checksum when possible)
+3. Dedupe duplicate UPC or MPN+manufacturer (keep best stock/profit; log merges)
+4. Return-risk / category deny-list exclusions
+5. Resolve Randmar shipping quote (or UNRESOLVED)
+6. eBay Browse competition when credentials exist; otherwise provisional flags
+   (`provisional_public_ebay`, `needs_official_ebay_validation`) — pipeline continues
+7. MAP floor: never price below MAP; `OpportunityOnly` hard-fails
+8. Keep **every** SKU that passes; rank by
+   `expected_monthly_contribution_profit * sales_probability` → `rank_score`
+9. Persist `ranked_queue` + `data/ranked_queue.json`; draft listing JSON locally
 
-```bash
-cd /workspace/firefinds/backend
-python -m pip install -e ".[dev]"
-cp ../.env.example ../.env   # edit locally; do not commit
-```
+## eBay
+
+Developer approval may be pending. Without `EBAY_CLIENT_ID` +
+`EBAY_CLIENT_SECRET_FILE`, `ebay-compete` / `validate-queue` skip official Browse
+and flag rows for later validation. Sell stubs always refuse while listings gates
+are off.
 
 ## CLI
 
 ```bash
 cd /workspace/firefinds/backend
+python -m pip install -e ".[dev]"
+PYTHONPATH=. python -m firefinds.cli.main health
 PYTHONPATH=. python -m firefinds.cli.main ingest-stub
-PYTHONPATH=. python -m firefinds.cli.main ingest-live   # read-only live pull
+PYTHONPATH=. python -m firefinds.cli.main ingest-live   # read-only
 PYTHONPATH=. python -m firefinds.cli.main score
-PYTHONPATH=. python -m firefinds.cli.main rank -n 10
+PYTHONPATH=. python -m firefinds.cli.main validate-queue   # ALL eligible
+PYTHONPATH=. python -m firefinds.cli.main ebay-compete     # alias
+PYTHONPATH=. python -m firefinds.cli.main listable-export
+PYTHONPATH=. python -m firefinds.cli.main ebay-sandbox-status
 ```
 
-`place-order` refuses while `SUPPLIER_ORDERS_ENABLED=false`.
+`--inject-ship CAD` is **test-only** to inject a resolved shipping cost. Production
+must use Randmar quote endpoints.
 
 ## Tests
 
@@ -88,6 +95,7 @@ PYTHONPATH=. python -m pytest ../tests -q
 
 ## Safety
 
-- Do **not** place supplier orders; the order gate refuses by default.
+- Do **not** place supplier orders / Process carts.
+- Do **not** publish eBay listings.
 - Do **not** print secret or token values.
-- `ingest-live` is catalog read-only (token + products POST + instant rebates GET).
+- Do **not** invent flat shipping as final cost.

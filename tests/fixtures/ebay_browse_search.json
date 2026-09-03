@@ -1,0 +1,29 @@
+{
+  "total": 4,
+  "itemSummaries": [
+    {
+      "itemId": "v1|100|0",
+      "title": "Sample competing item",
+      "price": {"value": "89.99", "currency": "CAD"},
+      "itemWebUrl": "https://www.ebay.ca/itm/100"
+    },
+    {
+      "itemId": "v1|101|0",
+      "title": "Sample competing item 2",
+      "price": {"value": "94.50", "currency": "CAD"},
+      "itemWebUrl": "https://www.ebay.ca/itm/101"
+    },
+    {
+      "itemId": "v1|102|0",
+      "title": "Sample competing item 3",
+      "price": {"value": "99.00", "currency": "CAD"},
+      "itemWebUrl": "https://www.ebay.ca/itm/102"
+    },
+    {
+      "itemId": "v1|103|0",
+      "title": "Sample competing item 4",
+      "price": {"value": "105.00", "currency": "CAD"},
+      "itemWebUrl": "https://www.ebay.ca/itm/103"
+    }
+  ]
+}

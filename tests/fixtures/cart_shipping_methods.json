@@ -1,0 +1,24 @@
+{
+  "ShippingMethods": {
+    "CanChooseCustomMethod": false,
+    "Methods": [
+      {
+        "MethodId": "STD",
+        "Label": "Standard Ground",
+        "Description": "Ground",
+        "Fees": 18.75,
+        "Discount": 0,
+        "RealShippingCharges": 18.75,
+        "Order": 1
+      },
+      {
+        "MethodId": "EXP",
+        "Label": "Express",
+        "Fees": 32.00,
+        "Discount": 0,
+        "RealShippingCharges": 32.00,
+        "Order": 2
+      }
+    ]
+  }
+}
