@@ -25,7 +25,8 @@ firefinds/
 
 ## Secrets
 
-- `RANDMAR_CLIENT_ID` = Integration key **name** (`Fire Finds catalog read`)
+- `Settings.from_env()` auto-loads `PROJECT_ROOT/.env` (does not override already-set env vars). Quote spaced values: `RANDMAR_CLIENT_ID="Fire Finds catalog read"`.
+- `RANDMAR_CLIENT_ID` = Integration key **name**; defaults to `Fire Finds catalog read` when unset (also `secrets/randmar_client_id.txt`)
 - `RANDMAR_CLIENT_SECRET_FILE` = path to secret file under `secrets/`
   (default `secrets/randmar_api_key.txt`)
 

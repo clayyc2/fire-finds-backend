@@ -48,7 +48,8 @@ class RandmarClient:
     def _load_credentials(self) -> tuple[str | None, str | None]:
         """Load client id/secret from env and secret files.
 
-        Client id: RANDMAR_CLIENT_ID env, else secrets/client_id,
+        Client id: RANDMAR_CLIENT_ID env, else settings / default,
+        else secrets/randmar_client_id.txt, secrets/client_id,
         else secrets/RANDMAR_CLIENT_ID.
 
         Client secret: RANDMAR_CLIENT_SECRET env, else file pointed to by
@@ -59,6 +60,7 @@ class RandmarClient:
         client_id = (
             os.environ.get("RANDMAR_CLIENT_ID")
             or self.settings.randmar_client_id
+            or self._read_named_secret("randmar_client_id.txt")
             or self._read_named_secret("client_id")
             or self._read_named_secret("RANDMAR_CLIENT_ID")
         )

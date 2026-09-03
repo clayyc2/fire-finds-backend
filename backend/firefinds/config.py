@@ -12,6 +12,67 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "firefinds.db"
 DEFAULT_ACTIONS_JSONL = DEFAULT_DATA_DIR / "actions.jsonl"
 DEFAULT_SECRET_FILE = DEFAULT_SECRETS_DIR / "randmar_api_key.txt"
+# Integration key *name* (not a secret). Used when RANDMAR_CLIENT_ID is unset.
+DEFAULT_RANDMAR_CLIENT_ID = "Fire Finds catalog read"
+DEFAULT_CLIENT_ID_FILE = DEFAULT_SECRETS_DIR / "randmar_client_id.txt"
+
+
+def parse_dotenv_value(raw: str) -> str:
+    """Strip optional surrounding single/double quotes from a .env value."""
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def parse_dotenv_line(line: str) -> tuple[str, str] | None:
+    """Parse one .env line into (key, value), or None if not an assignment.
+
+    Supports:
+    - KEY=value
+    - KEY="quoted value"
+    - KEY='quoted value'
+    - KEY=unquoted value with spaces
+    Comments (# ...) and blank lines are ignored.
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export ") :].lstrip()
+    if "=" not in stripped:
+        return None
+    key, _, rest = stripped.partition("=")
+    key = key.strip()
+    if not key:
+        return None
+    return key, parse_dotenv_value(rest)
+
+
+def load_dotenv(path: Path | None = None, *, override: bool = False) -> dict[str, str]:
+    """Load KEY=VALUE pairs from a .env file into os.environ.
+
+    By default does not override variables already set in the environment.
+    Returns the key/value pairs that were applied (or would apply if override).
+    """
+    env_path = path if path is not None else PROJECT_ROOT / ".env"
+    applied: dict[str, str] = {}
+    if not env_path.is_file():
+        return applied
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return applied
+    for line in text.splitlines():
+        parsed = parse_dotenv_line(line)
+        if parsed is None:
+            continue
+        key, value = parsed
+        if not override and key in os.environ:
+            continue
+        os.environ[key] = value
+        applied[key] = value
+    return applied
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -35,12 +96,29 @@ def _env_int(name: str, default: int) -> int:
     return int(raw)
 
 
+def _resolve_client_id(secrets_dir: Path) -> str:
+    """Resolve Randmar client id: env, secrets/randmar_client_id.txt, then default."""
+    env_val = os.environ.get("RANDMAR_CLIENT_ID")
+    if env_val and env_val.strip():
+        return env_val.strip()
+    for name in ("randmar_client_id.txt", "client_id", "RANDMAR_CLIENT_ID"):
+        path = secrets_dir / name
+        if path.is_file():
+            try:
+                text = path.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text:
+                return text
+    return DEFAULT_RANDMAR_CLIENT_ID
+
+
 @dataclass(frozen=True)
 class Settings:
     randmar_reseller_id: str = "2WQN9V11G"
     randmar_token_url: str = "https://auth.randmar.io/connect/token"
     randmar_api_base: str = "https://api.randmar.io"
-    randmar_client_id: str | None = None
+    randmar_client_id: str | None = DEFAULT_RANDMAR_CLIENT_ID
     randmar_client_secret_file: Path | None = DEFAULT_SECRET_FILE
     secrets_dir: Path = DEFAULT_SECRETS_DIR
     live_listings_enabled: bool = False
@@ -58,11 +136,14 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        # Auto-load PROJECT_ROOT/.env so CLI works without manual `export` / `. .env`.
+        load_dotenv(PROJECT_ROOT / ".env", override=False)
         secrets = os.environ.get("RANDMAR_SECRETS_DIR")
+        secrets_dir = Path(secrets) if secrets else DEFAULT_SECRETS_DIR
         db = os.environ.get("FIREFINDS_DB_PATH")
         jsonl = os.environ.get("FIREFINDS_ACTIONS_JSONL")
         secret_file = os.environ.get("RANDMAR_CLIENT_SECRET_FILE")
-        client_id = os.environ.get("RANDMAR_CLIENT_ID")
+        client_id = _resolve_client_id(secrets_dir)
         return cls(
             randmar_reseller_id=os.environ.get(
                 "RANDMAR_RESELLER_ID", "2WQN9V11G"
@@ -73,11 +154,11 @@ class Settings:
             randmar_api_base=os.environ.get(
                 "RANDMAR_API_BASE", "https://api.randmar.io"
             ),
-            randmar_client_id=client_id or None,
+            randmar_client_id=client_id,
             randmar_client_secret_file=(
                 Path(secret_file) if secret_file else DEFAULT_SECRET_FILE
             ),
-            secrets_dir=Path(secrets) if secrets else DEFAULT_SECRETS_DIR,
+            secrets_dir=secrets_dir,
             live_listings_enabled=_env_bool("LIVE_LISTINGS_ENABLED", False),
             supplier_orders_enabled=_env_bool("SUPPLIER_ORDERS_ENABLED", False),
             ebay_production_enabled=_env_bool("EBAY_PRODUCTION_ENABLED", False),
