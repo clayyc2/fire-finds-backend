@@ -1,41 +1,43 @@
-# Fire Finds — interim backend scaffold
+# Fire Finds — interim backend
 
-Greenfield local project at `/workspace/firefinds` (not an external git clone).
-Python package lives under `backend/firefinds/`. Origin/repo wiring comes later.
+Git repo tracking `https://github.com/clayyc2/fire-finds-backend`.
+Python package lives under `backend/firefinds/`.
 
 ## Layout
 
 ```
 firefinds/
-  .env.example          # documented env + feature gates (defaults OFF)
-  .gitignore            # .env, secrets/, *.db, __pycache__, …
-  secrets/              # mode 700 — Integration key files (never commit)
-  data/                 # created at runtime (SQLite + actions.jsonl)
+  .env.example          # CLIENT_ID + CLIENT_SECRET_FILE + feature gates
+  .gitignore            # .env, secrets/, data/, *.db, …
+  secrets/              # mode 700 — Integration key secret (never commit)
+  data/                 # live dumps / SQLite (gitignored)
   backend/
     firefinds/
-      config.py         # settings from env
-      db/schema.py      # products + actions SQLite schema
+      config.py
+      db/schema.py
       scoring/filters.py
       action_log/logger.py
-      clients/randmar.py
-      services.py       # ingest-stub / score / rank
+      clients/randmar.py   # token + Products/JSON POST + InstantRebates GET
+      services.py          # ingest-stub / ingest-live / score / rank
       cli/main.py
   tests/
 ```
 
 ## Secrets
 
-`RANDMAR_CLIENT_ID` and `RANDMAR_CLIENT_SECRET` come from the Randmar
-**Integration key**. Put them in `/workspace/firefinds/secrets/` (files named
-`client_id` / `client_secret`, or env vars). **Never commit** secrets. The
-client stub loads them when present and never prints secret values.
+- `RANDMAR_CLIENT_ID` = Integration key **name** (`Fire Finds catalog read`)
+- `RANDMAR_CLIENT_SECRET_FILE` = path to secret file under `secrets/`
+  (default `secrets/randmar_api_key.txt`)
+
+Never commit `.env`, `secrets/`, `data/`, or `*.db`. The client never logs
+secret or token values.
 
 ## Feature gates (default OFF)
 
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `LIVE_LISTINGS_ENABLED` | false | Live listing pushes gated |
-| `SUPPLIER_ORDERS_ENABLED` | false | Order methods raise `SupplierOrdersDisabled` |
+| `SUPPLIER_ORDERS_ENABLED` | false | Order methods / `place-order` refuse |
 | `EBAY_PRODUCTION_ENABLED` | false | Production eBay gated |
 
 ## Scoring filters (deterministic)
@@ -46,18 +48,22 @@ A product **passes** only when all hold:
 2. `contribution_margin >= MIN_CONTRIBUTION_MARGIN` (default **0.12**)
 3. `stock > STOCK_BUFFER` (default **2**)
 
-`contribution_profit = sell_price - landed_cost + rebate`  
-`contribution_margin = contribution_profit / sell_price`  
-Sell price prefers MAP, then MSRP. Landed cost prefers `landed_cost`, else `dealer_cost`.
+Sell price = **MAP** if MAP > 0, else **0.95 × MSRP**.
 
-Every decision is appended to `data/actions.jsonl` and the `actions` SQLite table.
+```
+fees = sell * 0.1325 + 0.30
+contribution_profit = sell - fees - 10 - landed_cost + rebate
+contribution_margin = contribution_profit / sell
+```
+
+Landed cost prefers `landed_cost`, else `dealer_cost` (Randmar `Price`).
 
 ## Setup
 
 ```bash
 cd /workspace/firefinds/backend
-python -m pip install -e ".[dev]"   # or: pip install pytest && PYTHONPATH=. …
-cp ../.env.example ../.env          # edit locally; do not commit
+python -m pip install -e ".[dev]"
+cp ../.env.example ../.env   # edit locally; do not commit
 ```
 
 ## CLI
@@ -65,11 +71,12 @@ cp ../.env.example ../.env          # edit locally; do not commit
 ```bash
 cd /workspace/firefinds/backend
 PYTHONPATH=. python -m firefinds.cli.main ingest-stub
+PYTHONPATH=. python -m firefinds.cli.main ingest-live   # read-only live pull
 PYTHONPATH=. python -m firefinds.cli.main score
 PYTHONPATH=. python -m firefinds.cli.main rank -n 10
 ```
 
-Or after editable install: `firefinds ingest-stub|score|rank`.
+`place-order` refuses while `SUPPLIER_ORDERS_ENABLED=false`.
 
 ## Tests
 
@@ -80,6 +87,6 @@ PYTHONPATH=. python -m pytest ../tests -q
 
 ## Safety
 
-- Do **not** place supplier orders with this scaffold; the order gate refuses by default.
-- Do **not** print secret values.
-- Live Randmar catalog fetch requires credentials; offline work uses `ingest-stub`.
+- Do **not** place supplier orders; the order gate refuses by default.
+- Do **not** print secret or token values.
+- `ingest-live` is catalog read-only (token + products POST + instant rebates GET).

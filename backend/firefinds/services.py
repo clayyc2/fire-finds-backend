@@ -3,28 +3,34 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
 from firefinds.action_log.logger import ActionLogger
+from firefinds.clients.randmar import (
+    RandmarClient,
+    extract_rebate_amount,
+    normalize_randmar_product,
+)
 from firefinds.config import Settings, get_settings
 from firefinds.db.schema import init_db
 from firefinds.scoring.filters import ScoreThresholds, score_product
 
 # Deterministic stub catalog for offline ingest (no live API / no secrets).
+# Numbers sized so FF-STUB-001 and FF-STUB-004 pass with fee placeholders
+# (13.25%+$0.30 + $10 ship) under default thresholds.
 STUB_PRODUCTS: list[dict[str, Any]] = [
     {
         "sku": "FF-STUB-001",
         "upc": "000111222333",
         "mpn": "STUB-A1",
         "manufacturer": "Acme",
-        "map": 49.99,
-        "msrp": 59.99,
-        "dealer_cost": 30.00,
+        "map": 80.00,
+        "msrp": 90.00,
+        "dealer_cost": 40.00,
         "rebate": 0.0,
         "stock": 10,
-        "landed_cost": 32.00,
+        "landed_cost": 40.00,
     },
     {
         "sku": "FF-STUB-002",
@@ -55,12 +61,12 @@ STUB_PRODUCTS: list[dict[str, Any]] = [
         "upc": "000111222336",
         "mpn": "STUB-D4",
         "manufacturer": "BetaCo",
-        "map": 80.00,
-        "msrp": 90.00,
+        "map": 100.00,
+        "msrp": 110.00,
         "dealer_cost": 50.00,
         "rebate": 0.0,
         "stock": 20,
-        "landed_cost": 52.00,
+        "landed_cost": 50.00,
     },
     {
         "sku": "FF-STUB-005",
@@ -114,6 +120,10 @@ def _thresholds(settings: Settings) -> ScoreThresholds:
         min_contribution_profit_cad=settings.min_contribution_profit_cad,
         min_contribution_margin=settings.min_contribution_margin,
         stock_buffer=settings.stock_buffer,
+        ebay_fee_rate=settings.ebay_fee_rate,
+        ebay_fee_fixed=settings.ebay_fee_fixed,
+        ship_est_cad=settings.ship_est_cad,
+        msrp_discount=settings.msrp_discount,
     )
 
 
@@ -159,6 +169,8 @@ def ingest_products(
     count = 0
     for product in products:
         sku = str(product["sku"])
+        if not sku:
+            continue
         if score:
             result = score_product(product, th)
             row = _row_from_product(product, result)
@@ -176,7 +188,6 @@ def ingest_products(
                 source=source,
             )
         else:
-            # Store raw with null scored fields
             class _Empty:
                 contribution_profit = None
                 contribution_margin = None
@@ -204,6 +215,87 @@ def ingest_products(
 def ingest_stub(settings: Settings | None = None) -> int:
     settings = settings or get_settings()
     return ingest_products(STUB_PRODUCTS, settings=settings, source="ingest-stub")
+
+
+def _rebate_map_from_payload(payload: Any) -> dict[str, float]:
+    rows: list[Any]
+    if payload is None:
+        return {}
+    if isinstance(payload, dict):
+        for key in ("items", "data", "products", "Results", "results"):
+            if isinstance(payload.get(key), list):
+                rows = payload[key]
+                break
+        else:
+            rows = [payload]
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        return {}
+    out: dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        sku = row.get("RandmarSKU") or row.get("sku")
+        if not sku:
+            continue
+        amt = extract_rebate_amount(row.get("InstantRebate"))
+        if amt == 0.0 and "RebateAmount" in row:
+            amt = extract_rebate_amount(row.get("RebateAmount"))
+        out[str(sku)] = amt
+    return out
+
+
+def _products_list_from_payload(payload: Any) -> list[dict[str, Any]]:
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        return [p for p in payload if isinstance(p, dict)]
+    if isinstance(payload, dict):
+        for key in ("items", "data", "products", "Results", "results"):
+            val = payload.get(key)
+            if isinstance(val, list):
+                return [p for p in val if isinstance(p, dict)]
+        return [payload]
+    return []
+
+
+def ingest_live(
+    *,
+    settings: Settings | None = None,
+    client: RandmarClient | None = None,
+    manufacturer_id: str | None = None,
+    dump_dir: Path | None = None,
+) -> int:
+    """Read-only live catalog ingest from Randmar (no order placement)."""
+    settings = settings or get_settings()
+    client = client or RandmarClient(settings)
+
+    products_raw = client.get_products_json(manufacturer_id=manufacturer_id)
+    rebates_raw = client.get_instant_rebates()
+
+    if dump_dir is not None:
+        dump_dir = Path(dump_dir)
+        dump_dir.mkdir(parents=True, exist_ok=True)
+        (dump_dir / "products_live.json").write_text(
+            json.dumps(products_raw), encoding="utf-8"
+        )
+        (dump_dir / "instant_rebates_live.json").write_text(
+            json.dumps(rebates_raw), encoding="utf-8"
+        )
+
+    rebate_by_sku = _rebate_map_from_payload(rebates_raw)
+    normalized: list[dict[str, Any]] = []
+    for raw in _products_list_from_payload(products_raw):
+        sku = raw.get("RandmarSKU") or raw.get("sku")
+        if not sku:
+            continue
+        rebate = rebate_by_sku.get(str(sku), 0.0)
+        normalized.append(normalize_randmar_product(raw, rebate=rebate))
+
+    return ingest_products(
+        normalized, settings=settings, source="ingest-live"
+    )
 
 
 def score_all(settings: Settings | None = None) -> int:
