@@ -7,7 +7,7 @@
 **Live freeze:** `20260904_1348` — SAFE **127** / DEST **25** / QUAR **85** / ranked listable **152**.  
 **Band-B:** **HOLD** (no recovery proposed).
 
-**Non-live E2E (2026-09-04):** Inventory Final 5 **5/5 OK**; Offer **0/5** blocked on `Invalid value for categoryId`; publish refused (expected). Phase A precondition = Offer green. See `data/reports/non_live_e2e_status_20260904_1348.md`.
+**Non-live E2E (2026-09-04):** Inventory Final 5 **5/5 OK**; Offer **0/5** blocked on **Business Policy IDs** / `sellerRegistrationCompleted=false` (categoryIds already fixed to `16204`/`112529`); publish refused (expected). Phase A precondition = Offer green after Clay policy IDs. See `data/reports/non_live_e2e_status_20260904_1348.md` + `docs/LAUNCH_READINESS_REPORT.md`.
 
 Companion copy: `data/reports/clay_go_live_authorization_brief.md`.
 
