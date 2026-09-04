@@ -78,3 +78,8 @@ Sign in everywhere as Sandbox seller **`TESTUSER_shopfirefindsnow`** (password f
 - Sandbox listing prerequisites (policies + inventory + offer): community guidance summarizing Inventory API flow  
 - Sandbox Sell UI: `sandbox.ebay.com/sl/sell` (verified). Legacy `bizpolicy.sandbox.ebay.com` opt-in host failed DNS 2026-09-04.
 
+
+
+## Update 2026-09-04 — API bypass worked
+
+Sandbox web sign-in (`signin.sandbox.ebay.com` / `sl/sell`) returns SORRY/Akamai 403. **Workaround applied:** Account API `POST /program/opt_in` with `SELLING_POLICY_MANAGEMENT`, then created payment/return/fulfillment policies for EBAY_CA. Offer E2E **5/5 PASS** with publish refused. Web registration still optional.

@@ -7,7 +7,12 @@
 **Live freeze:** `20260904_1348` — SAFE **127** / DEST **25** / QUAR **85** / ranked listable **152**.  
 **Band-B:** **HOLD** (no recovery proposed).
 
-**Non-live E2E (2026-09-04):** Inventory Final 5 **5/5 OK**; Offer **0/5** blocked on **Business Policy IDs** / `sellerRegistrationCompleted=false` (categoryIds already fixed to `16204`/`112529`); publish refused (expected). Phase A precondition = Offer green after Clay policy IDs. See `data/reports/non_live_e2e_status_20260904_1348.md` + `docs/LAUNCH_READINESS_REPORT.md`.
+**Non-live E2E / readiness:** Overall `BLOCKED_CLAY`. **Never tell Clay that Offer is blocked on categoryId** — those are already fixed (toners `16204`, headphones `112529`). Real Offer blocker = **Business Policy IDs** + `sellerRegistrationCompleted=false` for `TESTUSER_shopfirefindsnow`. Point Clay (when asked) to `docs/LAUNCH_READINESS_REPORT.md` + `docs/SANDBOX_SELLER_REGISTRATION_STEPS.md`. Publish/orders OFF. Stay dark unless asked.
+
+
+
+
+**Day-1 measure / kill pack (Phase C→D):** `docs/FINAL5_DAY1_MEASURE_KILL_PACK.md`
 
 Companion copy: `data/reports/clay_go_live_authorization_brief.md`.
 
@@ -92,7 +97,7 @@ UVVJGGWHN91TVNSMCSFR, BRHGES2415PK, 6200189, 0L9MMHWRPFN80HZOW2ET, 1EZB2PPX2JXPR
 3. **Dry-runs PASS** — Final 5 **5/5** and Wave 25 **25/25** on `data/reports/first_wave_25_dry_runs_20260904_1311.md` (gates OFF simulations).
 4. **`no_competition` HARD FAIL** — zero official Browse CA comps remain rejected; no soft first-listing (Clay policy 2026-09-04).
 5. **MAP policy** — never recommend / authorize selling below MAP; `uncompetitive_at_map` SKUs stay out of primary waves; hold-at-MAP only with explicit warning.
-6. **Sandbox §2** — Inventory/Offer validation clean for the named SKU set (categoryId / specifics resolved — see unlock checklist §2 blockers).
+6. **Sandbox §2** — Inventory OK; Offer clean for named SKU set after Clay supplies **3 Business Policy IDs** + `sellerRegistrationCompleted=true` (categoryIds already fixed: toners `16204`, headphones `112529`). See `docs/LAUNCH_READINESS_REPORT.md` (`BLOCKED_CLAY`).
 7. **Cohort** — SAFE_NATIONWIDE only for these waves; DEST / QUAR excluded; Band-B HOLD.
 8. **Fee posture** — NIS for waves 5/10/25; **no Store purchase required** at this scale.
 
@@ -136,6 +141,12 @@ Witness / BD note (optional): ____________________
 ```
 
 ---
+
+## Related (authoritative)
+
+- `docs/LAUNCH_READINESS_REPORT.md` — overall `BLOCKED_CLAY`
+- `docs/SANDBOX_SELLER_REGISTRATION_STEPS.md` — register `TESTUSER_shopfirefindsnow`; create EBAY_CA payment/return/fulfillment policies; send 3 real policy IDs (never fabricate)
+- `data/reports/non_live_e2e_status_20260904_1348.md`
 
 ## Related artifacts
 
