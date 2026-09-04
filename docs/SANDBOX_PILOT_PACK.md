@@ -8,21 +8,26 @@ Full draft (gitignored under `data/`):
 
 - `data/reports/sandbox_pilot_pack_draft.md`
 - `data/reports/sandbox_pilot_pack_draft.json`
+- Dry-run summary (2026-09-04): `data/reports/sandbox_pack_dry_runs_20260904.md` + `.json`
 
 ## Final 5 SKUs (`SAFE_NATIONWIDE` / snapshot `20260903_1744`)
 
-1. `5SU7SO72ZJJZXN39BV1O` (primary) — dry-run recorded at `data/dry_runs/5SU7SO72ZJJZXN39BV1O_latest.json`
-2. `JNT6MB6NZM7613W9V3TS` (primary)
-3. `12TR81JCCQZ3FLFYXF5D` (primary)
-4. `KTO9Q03JXGUJ91YXDVUK` (added; high rank_score, stock>>buffer)
-5. `YCCY3042XFJDNCRSFT6S` (added; high rank_score, stock>>buffer)
+| # | SKU | Dry-run | Artifact |
+|--:|-----|:-------:|----------|
+| 1 | `5SU7SO72ZJJZXN39BV1O` (primary) | **PASS** (prior) | `data/dry_runs/5SU7SO72ZJJZXN39BV1O_latest.json` |
+| 2 | `JNT6MB6NZM7613W9V3TS` (primary) | **PASS** | `data/dry_runs/JNT6MB6NZM7613W9V3TS_latest.json` |
+| 3 | `12TR81JCCQZ3FLFYXF5D` (primary) | **PASS** | `data/dry_runs/12TR81JCCQZ3FLFYXF5D_latest.json` |
+| 4 | `KTO9Q03JXGUJ91YXDVUK` (added) | **PASS** | `data/dry_runs/KTO9Q03JXGUJ91YXDVUK_latest.json` |
+| 5 | `YCCY3042XFJDNCRSFT6S` (added) | **PASS** | `data/dry_runs/YCCY3042XFJDNCRSFT6S_latest.json` |
+
+All five: `SIMULATED_LISTED` + `SIMULATED_ORDER`; `live_publish=false`; `supplier_order_api_called=false`; feature gates OFF (`LIVE_LISTINGS` / `SUPPLIER_ORDERS` / `EBAY_SANDBOX_PUBLISH`).
 
 Avoided `DESTINATION_SENSITIVE`. Skipped thin-headroom rank-4 `XY45K3YZCNUFODY9HCF5` (stock=3).
 Ops re-scan may later pause **stock≤2 only** (stock=3 OK).
 
-Image URLs ready for all five. Creative status: **unknown / in-flight**.  
+Image URLs ready for all five. Creative status: **ORIGINAL_SUPPLIER ready (PREP_ONLY)** — see `data/drafts/randmar_first/safe_nationwide/sandbox_pilot_5_original/` and `data/reports/sandbox_pilot_5_original_creative.json`. AI_ENHANCED deferred.  
 Depends on Canada Randmar OAuth + eBay CA sandbox OAuth before any sandbox publish.
 
-See also: `docs/EBAY_UNLOCK_CHECKLIST.md`, `docs/CREATIVE_IMAGERY_STATUS.md`.
+See also: `docs/EBAY_UNLOCK_CHECKLIST.md`, `docs/CREATIVE_IMAGERY_STATUS.md`, `docs/SHIPPING_QUOTE_FALLBACK.md`.
 
-Generated: `2026-09-04T01:32:27Z` (UTC).
+Generated: `2026-09-04T01:32:27Z` (UTC). Dry-run status updated: `2026-09-04T06:13:09Z` (UTC) / ~00:13 MDT.
