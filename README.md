@@ -115,6 +115,8 @@ PYTHONPATH=. python -m firefinds.cli.main freeze-shipping-snapshot
 PYTHONPATH=. python -m firefinds.cli.main split-cohorts --snapshot-id YYYYMMDD_HHMM
 PYTHONPATH=. python -m firefinds.cli.main authorize-drafts --snapshot-id YYYYMMDD_HHMM
 PYTHONPATH=. python -m firefinds.cli.main ebay-demand-discover --snapshot-id YYYYMMDD_HHMM
+PYTHONPATH=. python -m firefinds.cli.main ebay-demand-ingest --snapshot-id YYYYMMDD_HHMM --signals-file path/to/matches.json
+PYTHONPATH=. python -m firefinds.cli.main batch-creative-drafts --snapshot-id YYYYMMDD_HHMM [--cohort SAFE_NATIONWIDE]
 PYTHONPATH=. python -m firefinds.cli.main pipeline-freeze-split-draft
 PYTHONPATH=. python -m firefinds.cli.main sku-record upsert-metrics --sku SKU --pipeline-source RANDMAR_FIRST --match-confidence A_EXACT
 PYTHONPATH=. python -m firefinds.cli.main sku-record export-learning [--comparison-cohort-id ID]
@@ -127,7 +129,7 @@ must use Randmar quote endpoints.
 
 ## AI organization
 
-See [`docs/AI_ORG.md`](docs/AI_ORG.md) for the Fire Finds AI org (CTO orchestrator,
+See [`docs/AI_ORG.md`](docs/AI_ORG.md) and [`docs/EBAY_UNLOCK_CHECKLIST.md`](docs/EBAY_UNLOCK_CHECKLIST.md) for the Fire Finds AI org (CTO orchestrator,
 Product Research, Listing & Creative, Operations), shared SKU source of truth,
 `RANDMAR_FIRST` / `EBAY_DEMAND_FIRST` pipelines, match classes
 `A_EXACT` / `B_VARIANT` / `C_SUBSTITUTE`, creative A/B, safety gates, and
@@ -153,9 +155,23 @@ fields for later learning comparison (`sku-record export-learning`).
 `EBAY_DEMAND_FIRST` is scaffolded with provisional public flags until official
 eBay OAuth keys arrive (`EBAY_SELLING_LIMIT` is a soft placeholder only).
 
-Drafts under `data/drafts/randmar_first/` are local Inventory API payloads —
+Ready-to-list queues are clearly separated under `data/cohorts/{snapshot}/`:
+
+| Queue | Path |
+|-------|------|
+| `RANDMAR_FIRST` / `SAFE_NATIONWIDE` (priority) | `randmar_first/safe_nationwide/` |
+| `RANDMAR_FIRST` / `DESTINATION_SENSITIVE` | `randmar_first/destination_sensitive/` |
+| `QUARANTINE_UNRESOLVED` | `quarantine_unresolved/` |
+| `EBAY_DEMAND_FIRST` | `ebay_demand_first/` (+ `ebay-demand-ingest`) |
+
+Drafts land under `data/drafts/randmar_first/safe_nationwide/` and
+`destination_sensitive/` (Inventory API payloads with optional
+`ORIGINAL_SUPPLIER` / `AI_ENHANCED` creative twins via `batch-creative-drafts`) —
 **never published** while `LIVE_LISTINGS_ENABLED` / `EBAY_SANDBOX_PUBLISH_ENABLED`
 remain false.
+
+eBay unlock stages: see [`docs/EBAY_UNLOCK_CHECKLIST.md`](docs/EBAY_UNLOCK_CHECKLIST.md)
+(OAuth → Sandbox/API validation → small controlled live wave → measure → scale).
 
 ## Tests
 

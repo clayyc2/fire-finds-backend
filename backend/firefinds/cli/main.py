@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from firefinds.clients.ebay import EbayClient, EbayCredentialsMissing
 from firefinds.clients.randmar import SupplierOrdersDisabled
@@ -25,7 +26,11 @@ from firefinds.scoring.shipping import InjectedQuoteProvider
 from firefinds.pipelines.snapshot import freeze_shipping_snapshot, snapshot_stamp_from_progress
 from firefinds.pipelines.cohorts import split_randmar_cohorts
 from firefinds.pipelines.authorize import authorize_and_draft_survivors
-from firefinds.discovery.ebay_demand import discover_ebay_demand_first
+from firefinds.discovery.ebay_demand import (
+    discover_ebay_demand_first,
+    ingest_provisional_demand_matches,
+)
+from firefinds.listings.creative_batch import batch_write_creative_drafts
 from firefinds.sku_record.metrics import (
     export_learning_comparison,
     get_sku_record,
@@ -368,6 +373,44 @@ def cmd_dry_run_sku(args: argparse.Namespace) -> int:
     return 0 if report["backend_gates"]["pass"] else 1
 
 
+
+def cmd_ebay_demand_ingest(args: argparse.Namespace) -> int:
+    """Ingest provisional demand matches/signals JSON into EBAY_DEMAND_FIRST."""
+    settings = get_settings()
+    try:
+        result = ingest_provisional_demand_matches(
+            signals_path=args.signals_file,
+            snapshot_id=args.snapshot_id,
+            settings=settings,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ebay-demand-ingest failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result["summary"], indent=2, default=str))
+    return 0
+
+
+def cmd_batch_creative_drafts(args: argparse.Namespace) -> int:
+    """Batch-write optimized creative drafts into cohort-separated dirs."""
+    settings = get_settings()
+    cohorts = None
+    if args.cohort:
+        cohorts = [args.cohort]
+    try:
+        result = batch_write_creative_drafts(
+            settings=settings,
+            snapshot_id=args.snapshot_id,
+            cohorts=cohorts,
+            include_ai_twin=not args.no_ai_twin,
+            limit=args.limit,
+        )
+    except (RuntimeError, ValueError, KeyError) as exc:
+        print(f"batch-creative-drafts failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result["summary"], indent=2, default=str))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="firefinds",
@@ -624,6 +667,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip stub AI_ENHANCED creative twin",
     )
     p_dry.set_defaults(func=cmd_dry_run_sku)
+
+    p_edf_in = sub.add_parser(
+        "ebay-demand-ingest",
+        help=(
+            "Ingest provisional demand matches/signals JSON into EBAY_DEMAND_FIRST "
+            "(scaffold; no live publish)"
+        ),
+    )
+    p_edf_in.add_argument("--snapshot-id", required=True)
+    p_edf_in.add_argument(
+        "--signals-file",
+        required=True,
+        help="JSON file: {signals:[...]} / {matches:[...]} / bare list",
+    )
+    p_edf_in.set_defaults(func=cmd_ebay_demand_ingest)
+
+    p_batch = sub.add_parser(
+        "batch-creative-drafts",
+        help=(
+            "Batch-write optimized draft fields + ORIGINAL_SUPPLIER/AI_ENHANCED "
+            "into SKU records and data/drafts/randmar_first/{safe_nationwide,"
+            "destination_sensitive}/ (never publish)"
+        ),
+    )
+    p_batch.add_argument("--snapshot-id", required=True)
+    p_batch.add_argument(
+        "--cohort",
+        choices=["SAFE_NATIONWIDE", "DESTINATION_SENSITIVE"],
+        default=None,
+        help="Optional single cohort (default: both; SAFE_NATIONWIDE first)",
+    )
+    p_batch.add_argument("--limit", type=int, default=None, help="Optional SKU cap")
+    p_batch.add_argument(
+        "--no-ai-twin",
+        action="store_true",
+        help="Skip AI_ENHANCED creative twin files",
+    )
+    p_batch.set_defaults(func=cmd_batch_creative_drafts)
 
     return parser
 

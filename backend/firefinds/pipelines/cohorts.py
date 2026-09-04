@@ -232,6 +232,14 @@ def split_randmar_cohorts(
         )
     conn.commit()
 
+    # Cohort-root for this snapshot (siblings: randmar_first / quarantine / ebay_demand_first)
+    cohort_root = out_dir.parent  # data/cohorts/{snapshot_id}
+    safe_dir = out_dir / "safe_nationwide"
+    sensitive_dir = out_dir / "destination_sensitive"
+    quarantine_dir = cohort_root / "quarantine_unresolved"
+    for d in (safe_dir, sensitive_dir, quarantine_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
     summary = {
         "snapshot_id": snapshot_id,
         "pipeline_source": PIPELINE_RANDMAR_FIRST,
@@ -239,7 +247,16 @@ def split_randmar_cohorts(
         "destination_sensitive": len(sensitive),
         "quarantine_unresolved": len(quarantine),
         "export_dir": str(out_dir),
+        "queues": {
+            "RANDMAR_FIRST/SAFE_NATIONWIDE": str(safe_dir),
+            "RANDMAR_FIRST/DESTINATION_SENSITIVE": str(sensitive_dir),
+            "QUARANTINE_UNRESOLVED": str(quarantine_dir),
+            "EBAY_DEMAND_FIRST": str(cohort_root / "ebay_demand_first"),
+        },
+        "priority": ["SAFE_NATIONWIDE", "DESTINATION_SENSITIVE", "QUARANTINE_UNRESOLVED"],
     }
+
+    # Flat files (backward compatible) + clearly separated queue subdirs
     _write_json(out_dir / "SAFE_NATIONWIDE.json", {"summary": summary, "rows": safe})
     _write_json(
         out_dir / "DESTINATION_SENSITIVE.json",
@@ -253,6 +270,64 @@ def split_randmar_cohorts(
     _write_csv(out_dir / "DESTINATION_SENSITIVE.csv", sensitive)
     _write_csv(out_dir / "QUARANTINE_UNRESOLVED.csv", quarantine)
     _write_json(out_dir / "cohort_summary.json", summary)
+
+    _write_json(safe_dir / "queue.json", {"summary": summary, "cohort": COHORT_SAFE_NATIONWIDE, "rows": safe})
+    _write_csv(safe_dir / "queue.csv", safe)
+    _write_json(safe_dir / "SUMMARY.json", {"count": len(safe), "cohort": COHORT_SAFE_NATIONWIDE, "priority": 1})
+
+    _write_json(
+        sensitive_dir / "queue.json",
+        {"summary": summary, "cohort": COHORT_DESTINATION_SENSITIVE, "rows": sensitive},
+    )
+    _write_csv(sensitive_dir / "queue.csv", sensitive)
+    _write_json(
+        sensitive_dir / "SUMMARY.json",
+        {"count": len(sensitive), "cohort": COHORT_DESTINATION_SENSITIVE, "priority": 2},
+    )
+
+    _write_json(
+        quarantine_dir / "queue.json",
+        {
+            "summary": summary,
+            "cohort": COHORT_QUARANTINE_UNRESOLVED,
+            "pipeline_source": PIPELINE_RANDMAR_FIRST,
+            "rows": quarantine,
+        },
+    )
+    _write_csv(quarantine_dir / "queue.csv", quarantine)
+    _write_json(
+        quarantine_dir / "SUMMARY.json",
+        {
+            "count": len(quarantine),
+            "cohort": COHORT_QUARANTINE_UNRESOLVED,
+            "sellable": False,
+            "priority": 3,
+        },
+    )
+    # Manifest listing all separated queues for ready-to-list backlog
+    _write_json(
+        cohort_root / "READY_TO_LIST_QUEUES.json",
+        {
+            "snapshot_id": snapshot_id,
+            "gates": {
+                "LIVE_LISTINGS_ENABLED": False,
+                "SUPPLIER_ORDERS_ENABLED": False,
+                "publish": False,
+            },
+            "queues": summary["queues"],
+            "counts": {
+                "RANDMAR_FIRST/SAFE_NATIONWIDE": len(safe),
+                "RANDMAR_FIRST/DESTINATION_SENSITIVE": len(sensitive),
+                "QUARANTINE_UNRESOLVED": len(quarantine),
+            },
+            "priority_order": [
+                "RANDMAR_FIRST/SAFE_NATIONWIDE",
+                "RANDMAR_FIRST/DESTINATION_SENSITIVE",
+                "QUARANTINE_UNRESOLVED",
+                "EBAY_DEMAND_FIRST",
+            ],
+        },
+    )
 
     # Mirror into snapshot dir when present
     snap_dir = data_dir / "snapshots" / f"{snapshot_id}_shipping_complete"

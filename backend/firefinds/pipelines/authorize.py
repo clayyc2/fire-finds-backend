@@ -73,7 +73,9 @@ def authorize_and_draft_survivors(
 ) -> dict[str, Any]:
     """Authorize SAFE + DESTINATION_SENSITIVE SKUs and write draft payloads.
 
-    Never publishes. Drafts land under data/drafts/randmar_first/ by default.
+    Never publishes. Drafts land under cohort-separated dirs by default:
+      data/drafts/randmar_first/safe_nationwide/
+      data/drafts/randmar_first/destination_sensitive/
     """
     settings = settings or get_settings()
     data_dir = Path(settings.db_path).parent
@@ -81,6 +83,10 @@ def authorize_and_draft_survivors(
         drafts_dir or (data_dir / "drafts" / "randmar_first")
     )
     out_dir.mkdir(parents=True, exist_ok=True)
+    _COHORT_SUB = {
+        "SAFE_NATIONWIDE": "safe_nationwide",
+        "DESTINATION_SENSITIVE": "destination_sensitive",
+    }
 
     want = set(
         cohorts
@@ -146,9 +152,14 @@ def authorize_and_draft_survivors(
             skipped.append(record)
             continue
 
-        path = out_dir / f"{product['sku']}.json"
+        cohort_name = str(product.get("cohort") or "SAFE_NATIONWIDE")
+        sub = _COHORT_SUB.get(cohort_name, cohort_name.lower())
+        cohort_dir = out_dir / sub
+        cohort_dir.mkdir(parents=True, exist_ok=True)
+        path = cohort_dir / f"{product['sku']}.json"
         path.write_text(json.dumps(draft, indent=2, default=str), encoding="utf-8")
         record["draft_path"] = str(path)
+        record["draft_cohort_dir"] = str(cohort_dir)
         authorized.append(record)
         drafts_written += 1
 
@@ -172,18 +183,25 @@ def authorize_and_draft_survivors(
         )
 
     conn.commit()
+    by_cohort: dict[str, int] = {}
+    for r in authorized:
+        c = str(r.get("cohort") or "")
+        by_cohort[c] = by_cohort.get(c, 0) + 1
     summary = {
         "snapshot_id": snapshot_id,
         "pipeline_source": pipeline_source,
         "cohorts": sorted(want),
         "candidates": len(products),
         "drafts_written": drafts_written,
+        "drafts_by_cohort": by_cohort,
         "skipped_map_fail": len(skipped),
         "needs_manual_channel_review": sum(
             1 for r in authorized if r.get("needs_manual_channel_review")
         ),
         "channel_ok_false": sum(1 for r in authorized if not r.get("channel_ok")),
         "drafts_dir": str(out_dir),
+        "safe_nationwide_dir": str(out_dir / "safe_nationwide"),
+        "destination_sensitive_dir": str(out_dir / "destination_sensitive"),
     }
     (out_dir / "_authorization_summary.json").write_text(
         json.dumps(

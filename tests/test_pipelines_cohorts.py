@@ -164,12 +164,21 @@ def test_freeze_split_authorize(settings: Settings):
     )
     assert drafts["summary"]["drafts_written"] == 2
     out = Path(drafts["summary"]["drafts_dir"])
-    files = list(out.glob("*.json"))
-    assert len([f for f in files if not f.name.startswith("_")]) == 2
-    sample = json.loads(next(f for f in files if not f.name.startswith("_")).read_text())
+    safe_files = list((out / "safe_nationwide").glob("*.json"))
+    sens_files = list((out / "destination_sensitive").glob("*.json"))
+    assert len(safe_files) == 1
+    assert len(sens_files) == 1
+    # Separated queue dirs from split
+    cohort_root = Path(settings.db_path).parent / "cohorts" / "20260903_1744"
+    assert (cohort_root / "randmar_first" / "safe_nationwide" / "queue.json").is_file()
+    assert (cohort_root / "randmar_first" / "destination_sensitive" / "queue.json").is_file()
+    assert (cohort_root / "quarantine_unresolved" / "queue.json").is_file()
+    assert (cohort_root / "READY_TO_LIST_QUEUES.json").is_file()
+    sample = json.loads(safe_files[0].read_text())
     assert sample["publish"] is False
     assert sample["authorization"]["map_ok"] is True
     assert "pipeline_source" in sample
+    assert sample.get("cohort") == COHORT_SAFE_NATIONWIDE
 
 
 def test_match_rules_exact_upc_and_mpn():

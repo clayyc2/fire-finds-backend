@@ -476,3 +476,81 @@ def discover_ebay_demand_first(
     )
     conn.close()
     return payload
+
+
+def demand_signal_from_dict(raw: Mapping[str, Any]) -> DemandSignal:
+    """Build a DemandSignal from a JSON/dict provisional match or signal row."""
+    return DemandSignal(
+        query=str(raw.get("query") or raw.get("upc") or raw.get("mpn") or raw.get("sku") or ""),
+        query_type=str(raw.get("query_type") or ("upc" if raw.get("upc") else "mpn")),
+        upc=raw.get("upc"),
+        mpn=raw.get("mpn"),
+        manufacturer=raw.get("manufacturer"),
+        model=raw.get("model"),
+        title=raw.get("title"),
+        sold_count=int(raw.get("sold_count") or 0),
+        active_count=int(raw.get("active_count") or 0),
+        repeated_demand=bool(
+            raw.get("repeated_demand")
+            if raw.get("repeated_demand") is not None
+            else (int(raw.get("sold_count") or 0) >= 2 or int(raw.get("active_count") or 0) >= 3)
+        ),
+        lowest_price=(
+            float(raw["lowest_price"]) if raw.get("lowest_price") is not None else None
+        ),
+        median_price=(
+            float(raw["median_price"]) if raw.get("median_price") is not None else None
+        ),
+        sample_url=raw.get("sample_url"),
+        provisional_public_ebay=bool(raw.get("provisional_public_ebay", True)),
+        needs_official_ebay_validation=bool(
+            raw.get("needs_official_ebay_validation", True)
+        ),
+        source=str(raw.get("source") or "provisional_ingest"),
+    )
+
+
+def load_demand_signals_from_json(path: Path | str) -> list[DemandSignal]:
+    """Load provisional demand signals/matches from a JSON file.
+
+    Accepts:
+      - ``{"signals": [ ... ]}``
+      - ``{"matches": [ ... ]}`` (alias)
+      - a bare JSON list of signal objects
+    Each object needs enough identity (upc and/or mpn+manufacturer) to match.
+    """
+    p = Path(path)
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = payload.get("signals") or payload.get("matches") or payload.get("rows") or []
+    else:
+        raise ValueError(f"unsupported demand ingest payload type: {type(payload)}")
+    if not isinstance(rows, list):
+        raise ValueError("signals/matches must be a JSON list")
+    return [demand_signal_from_dict(r) for r in rows if isinstance(r, Mapping)]
+
+
+def ingest_provisional_demand_matches(
+    *,
+    signals_path: Path | str,
+    snapshot_id: str,
+    settings: Settings | None = None,
+    export_dir: Path | None = None,
+) -> dict[str, Any]:
+    """CLI helper: ingest a provided provisional demand matches file into EDF.
+
+    Gates remain OFF — discovery only; no live publish / no supplier orders.
+    """
+    signals = load_demand_signals_from_json(signals_path)
+    provider = ProvisionalPublicDemandProvider(signals)
+    result = discover_ebay_demand_first(
+        settings=settings,
+        snapshot_id=snapshot_id,
+        demand_provider=provider,
+        export_dir=export_dir,
+    )
+    result["summary"]["ingested_from"] = str(signals_path)
+    result["summary"]["ingested_signal_count"] = len(signals)
+    return result
