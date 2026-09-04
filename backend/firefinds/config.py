@@ -16,6 +16,9 @@ DEFAULT_SECRET_FILE = DEFAULT_SECRETS_DIR / "randmar_api_key.txt"
 DEFAULT_RANDMAR_CLIENT_ID = "Fire Finds catalog read"
 DEFAULT_CLIENT_ID_FILE = DEFAULT_SECRETS_DIR / "randmar_client_id.txt"
 DEFAULT_EBAY_SECRET_FILE = DEFAULT_SECRETS_DIR / "ebay_client_secret.txt"
+DEFAULT_EBAY_USER_REFRESH_TOKEN_FILE = (
+    DEFAULT_SECRETS_DIR / "ebay_user_refresh_token.txt"
+)
 
 
 def parse_dotenv_value(raw: str) -> str:
@@ -145,6 +148,9 @@ class Settings:
     ebay_env: str = "sandbox"  # sandbox | production (Sell default)
     ebay_client_id: str | None = None
     ebay_client_secret_file: Path | None = DEFAULT_EBAY_SECRET_FILE
+    # RuName (eBay Redirect URL name) for user OAuth; EBAY_REDIRECT_URI is an alias.
+    ebay_runame: str | None = None
+    ebay_user_refresh_token_file: Path | None = DEFAULT_EBAY_USER_REFRESH_TOKEN_FILE
     ebay_marketplace_id: str = "EBAY_CA"
     ebay_sandbox_publish_enabled: bool = False
     ebay_browse_use_production: bool = True
@@ -192,6 +198,12 @@ class Settings:
         jsonl = os.environ.get("FIREFINDS_ACTIONS_JSONL")
         secret_file = os.environ.get("RANDMAR_CLIENT_SECRET_FILE")
         ebay_secret_file = os.environ.get("EBAY_CLIENT_SECRET_FILE")
+        ebay_refresh_file = os.environ.get("EBAY_USER_REFRESH_TOKEN_FILE")
+        ebay_runame = (
+            (os.environ.get("EBAY_RUNAME") or os.environ.get("EBAY_REDIRECT_URI") or "")
+            .strip()
+            or None
+        )
         client_id = _resolve_client_id(secrets_dir)
         ebay_client_id = _resolve_ebay_client_id(secrets_dir)
         ebay_env_raw = (os.environ.get("EBAY_ENV") or "sandbox").strip().lower()
@@ -225,6 +237,12 @@ class Settings:
                 Path(ebay_secret_file)
                 if ebay_secret_file
                 else DEFAULT_EBAY_SECRET_FILE
+            ),
+            ebay_runame=ebay_runame,
+            ebay_user_refresh_token_file=(
+                Path(ebay_refresh_file)
+                if ebay_refresh_file
+                else DEFAULT_EBAY_USER_REFRESH_TOKEN_FILE
             ),
             ebay_marketplace_id=os.environ.get(
                 "EBAY_MARKETPLACE_ID", "EBAY_CA"

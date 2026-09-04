@@ -2,8 +2,8 @@
 
 > **Current stage (2026-09-04):** **Stage 0 ready** — RANDMAR_FIRST cohorts frozen (`20260904_1224`; migrated from `20260904_0140` / `20260903_1744`), SAFE_NATIONWIDE drafts + ORIGINAL_SUPPLIER creative present, quarantine excluded from live waves, gates **OFF**.  
 > **Sandbox Final 5:** still **SAFE**; Stage 0 dry-run pack **5/5 PASS**.  
-> **Blocked on:** eBay **developer application approval** → then §1 OAuth (client + user/refresh token). OAuth **still blocked**. No sandbox publish until OAuth lands.  
-> Health: `ebay_credentials: false`; Browse competition stays provisional (`needs_official_ebay_validation`).
+> **Blocked on:** §1b RuName + Sell **user** OAuth (refresh token). Sandbox client-credentials works; user consent not done yet. No sandbox publish until user token lands and §2 is complete.  
+> Gates stay OFF. Browse may still be provisional until production Browse keys are confirmed for CA competition.
 
 Gates stay **OFF** until each stage below is explicitly completed and human-approved.
 Default: `LIVE_LISTINGS_ENABLED=false`, `EBAY_SANDBOX_PUBLISH_ENABLED=false`,
@@ -25,17 +25,66 @@ separate unlock and is out of scope here.
 
 ## 1. OAuth
 
-> **Waiting here:** developer approval pending. Do not flip any Sell/publish gates. Secrets stay in env / `secrets/` (never commit).
+> **Status:** Sandbox **client-credentials** (Browse app token) works. Sell **user**
+> OAuth (authorization code → refresh token) is implemented in CLI — complete the
+> RuName + consent steps below. Do **not** flip any Sell/publish gates yet.
+> Secrets stay in env / `secrets/` (never commit).
 
-- [ ] eBay developer application approved for the needed scopes
-- [ ] `EBAY_CLIENT_ID` set in env
+### 1a. App credentials (client credentials — Browse)
+
+- [x] Sandbox App ID / Cert ID present (client-credentials token works)
+- [ ] `EBAY_CLIENT_ID` set in env (sandbox App ID)
 - [ ] `EBAY_CLIENT_SECRET_FILE` points at a mode-600 secret file (never commit)
-- [ ] User / refresh token flow completed for the selling account (CA marketplace)
-- [ ] Token refresh path verified without printing secrets
 - [ ] Confirm Browse (read) works before enabling any Sell write scopes in automation
 
+### 1b. RuName + Sell user OAuth (authorization code grant)
+
+eBay does **not** use a normal HTTPS callback for the `redirect_uri` parameter —
+you paste the **RuName** (eBay Redirect URL name) generated in the Developer Portal.
+
+**Create a Sandbox RuName (Clay):**
+
+1. Open [eBay Developer Portal → Application Keys](https://developer.ebay.com/my/keys) and select the **Sandbox** keyset.
+2. Under **User Tokens** / **Get a Token from eBay via Your Application**, click to
+   create / configure an OAuth redirect.
+3. Fill the branding / privacy / auth-accepted URL fields (for local/dev you can use
+   a simple HTTPS page or `https://localhost` / a placeholder you control — eBay still
+   issues a **RuName** string such as `YourApp-YourApp-SBX-xxxxx`).
+4. Copy the **RuName** value shown under **RuName (eBay Redirect URL name)**.
+5. Paste into `.env` as **either**:
+   - `EBAY_RUNAME=<RuName>` **or**
+   - `EBAY_REDIRECT_URI=<RuName>` (alias — same value; do **not** invent a random URL)
+6. Keep `EBAY_ENV=sandbox`. Optional override:
+   `EBAY_USER_REFRESH_TOKEN_FILE=secrets/ebay_user_refresh_token.txt`
+
+**Minimal Sell scopes** (marketing omitted — not required for inventory/offers):
+
+- `https://api.ebay.com/oauth/api_scope/sell.inventory`
+- `https://api.ebay.com/oauth/api_scope/sell.account`
+- `https://api.ebay.com/oauth/api_scope/sell.fulfillment`
+
+**CLI flow (secrets never printed):**
+
+```bash
+firefinds ebay-oauth-url          # open URL; sign in as Sandbox seller test user
+# After Agree, browser lands on your Auth Accepted URL with ?code=...
+# Copy the code (URL-decode if needed) and exchange within ~5 minutes:
+firefinds ebay-oauth-exchange --code '<paste-code-here>'
+firefinds ebay-user-token-status  # presence only
+```
+
+- [ ] RuName created in Sandbox and pasted as `EBAY_RUNAME` / `EBAY_REDIRECT_URI`
+- [ ] `firefinds ebay-oauth-url` prints an `auth.sandbox.ebay.com` authorize URL
+- [ ] Sandbox seller user consents; `ebay-oauth-exchange` stores refresh token (mode 600)
+- [ ] `ebay-user-token-status` shows `refresh_token_present: true`
+- [ ] Token refresh path verified without printing secrets
+- [ ] Gates still OFF: `LIVE_LISTINGS_ENABLED` / `EBAY_SANDBOX_PUBLISH_ENABLED` /
+      `EBAY_PRODUCTION_ENABLED` / `SUPPLIER_ORDERS_ENABLED` = false
+
 **Exit criteria:** official Browse competition no longer needs
-`provisional_public_ebay` / `needs_official_ebay_validation` for the pilot SKUs.
+`provisional_public_ebay` / `needs_official_ebay_validation` for the pilot SKUs;
+user refresh token present for upcoming sandbox Sell inventory/offer work
+(still no publish until §2).
 
 ## 2. Sandbox / API validation
 
@@ -99,5 +148,6 @@ not left permanently ON by accident.
 
 - [`AI_ORG.md`](AI_ORG.md) — roles, match classes, creative A/B, escalation
 - Root `README.md` — feature gates, dual pipelines, CLI
-- CLI: `split-cohorts`, `authorize-drafts`, `batch-creative-drafts`,
+- CLI: `ebay-oauth-url`, `ebay-oauth-exchange`, `ebay-user-token-status`,
+  `split-cohorts`, `authorize-drafts`, `batch-creative-drafts`,
   `ebay-demand-ingest`, `dry-run-sku`, `health`

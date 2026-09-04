@@ -1,7 +1,8 @@
 """eBay API client: Browse competition (read-only) + gated Sell Sandbox stubs.
 
 Browse uses OAuth client-credentials (application token).
-Sell inventory/offer/publish wrappers exist but refuse unless live-listing
+Sell user OAuth (authorization code → refresh token) is implemented for
+sandbox; inventory/offer/publish wrappers still refuse unless live-listing
 gates allow them. Secrets are never printed or logged.
 """
 
@@ -12,6 +13,7 @@ import json
 import logging
 import os
 import statistics
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,6 +32,15 @@ PRODUCTION_BROWSE_BASE = "https://api.ebay.com/buy/browse/v1"
 SANDBOX_BROWSE_BASE = "https://api.sandbox.ebay.com/buy/browse/v1"
 PRODUCTION_SELL_BASE = "https://api.ebay.com/sell"
 SANDBOX_SELL_BASE = "https://api.sandbox.ebay.com/sell"
+PRODUCTION_AUTH_URL = "https://auth.ebay.com/oauth2/authorize"
+SANDBOX_AUTH_URL = "https://auth.sandbox.ebay.com/oauth2/authorize"
+
+# Minimal Sell user scopes (omit sell.marketing — not required for inventory/offers).
+SELL_USER_SCOPES: tuple[str, ...] = (
+    "https://api.ebay.com/oauth/api_scope/sell.inventory",
+    "https://api.ebay.com/oauth/api_scope/sell.account",
+    "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+)
 
 
 class EbayCredentialsMissing(RuntimeError):
@@ -42,6 +53,10 @@ class EbayListingsDisabled(RuntimeError):
 
 class EbayPublishDisabled(RuntimeError):
     """Raised when sandbox publish is gated off."""
+
+
+class EbayUserOAuthNotConfigured(RuntimeError):
+    """Raised when RuName or user refresh token is missing."""
 
 
 @dataclass(frozen=True)
@@ -83,6 +98,8 @@ class EbayClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         self._app_token: str | None = None
+        self._user_access_token: str | None = None
+        self._user_access_token_expires_at: float = 0.0
 
     # --- credentials -----------------------------------------------------
 
@@ -378,14 +395,240 @@ class EbayClient:
                 "sandbox. Default is off."
             )
 
-    def get_user_token_placeholder(self) -> str:
-        """User-token placeholder for Sell Sandbox (not fetched here)."""
-        # Real user OAuth is out of scope; Sell paths stay gated.
-        raise EbayListingsDisabled(
-            "Sell user-token flow is a placeholder. "
-            "LIVE_LISTINGS_ENABLED must be true and a user token configured "
-            "before Sell mutations."
+    # --- User OAuth (authorization code → refresh token) -----------------
+
+    def _auth_authorize_url(self) -> str:
+        if self.settings.ebay_env == "production":
+            return PRODUCTION_AUTH_URL
+        return SANDBOX_AUTH_URL
+
+    def _user_token_url(self) -> str:
+        """Token endpoint for user OAuth (follows EBAY_ENV, not Browse)."""
+        if self.settings.ebay_env == "production":
+            return PRODUCTION_TOKEN_URL
+        return SANDBOX_TOKEN_URL
+
+    def _resolve_runame(self) -> str | None:
+        runame = self.settings.ebay_runame
+        if runame and str(runame).strip():
+            return str(runame).strip()
+        env = (
+            os.environ.get("EBAY_RUNAME")
+            or os.environ.get("EBAY_REDIRECT_URI")
+            or ""
+        ).strip()
+        return env or None
+
+    def require_runame(self) -> str:
+        runame = self._resolve_runame()
+        if not runame:
+            raise EbayUserOAuthNotConfigured(
+                "EBAY_RUNAME (or EBAY_REDIRECT_URI) is required for user OAuth. "
+                "Create a RuName in the eBay Developer Portal under User tokens "
+                "/ Get a Token from eBay via Your Application (sandbox), then "
+                "paste the RuName value into .env."
+            )
+        return runame
+
+    def _refresh_token_path(self) -> Path:
+        configured = self.settings.ebay_user_refresh_token_file
+        if configured is not None:
+            return Path(configured)
+        env = os.environ.get("EBAY_USER_REFRESH_TOKEN_FILE")
+        if env:
+            return Path(env)
+        return self.settings.secrets_dir / "ebay_user_refresh_token.txt"
+
+    def user_refresh_token_present(self) -> bool:
+        path = self._refresh_token_path()
+        if not path.is_file():
+            return False
+        try:
+            return bool(path.read_text(encoding="utf-8").strip())
+        except OSError:
+            return False
+
+    def _read_refresh_token(self) -> str | None:
+        path = self._refresh_token_path()
+        return self._read_secret_file(path)
+
+    def _store_refresh_token(self, refresh_token: str) -> Path:
+        """Write refresh token to secrets file with mode 600. Never logs value."""
+        path = self._refresh_token_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
         )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(refresh_token.strip() + "\n")
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return path
+
+    def _basic_auth_header(self) -> str:
+        self.require_credentials()
+        client_id, client_secret = self._load_credentials()
+        assert client_id and client_secret
+        return "Basic " + base64.b64encode(
+            f"{client_id}:{client_secret}".encode("utf-8")
+        ).decode("ascii")
+
+    def _post_token_form(self, form: dict[str, str]) -> dict[str, Any]:
+        body = urllib.parse.urlencode(form).encode("utf-8")
+        req = urllib.request.Request(
+            self._user_token_url(),
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": self._basic_auth_header(),
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"eBay user token request failed: HTTP {exc.code}"
+            ) from None
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"eBay user token request failed: {exc.reason}"
+            ) from None
+
+    def build_auth_url(
+        self,
+        *,
+        scopes: tuple[str, ...] | list[str] | None = None,
+        state: str | None = None,
+    ) -> str:
+        """Build sandbox/production authorize URL for Sell user consent."""
+        self.require_credentials()
+        runame = self.require_runame()
+        client_id, _ = self._load_credentials()
+        assert client_id
+        scope_list = tuple(scopes) if scopes else SELL_USER_SCOPES
+        params: dict[str, str] = {
+            "client_id": client_id,
+            "redirect_uri": runame,
+            "response_type": "code",
+            "scope": " ".join(scope_list),
+        }
+        if state:
+            params["state"] = state
+        return f"{self._auth_authorize_url()}?{urllib.parse.urlencode(params)}"
+
+    def exchange_code(self, code: str) -> dict[str, Any]:
+        """Exchange authorization code for tokens; store refresh token (mode 600).
+
+        Returns a secrets-free status dict. Never includes token values.
+        """
+        raw_code = (code or "").strip()
+        if not raw_code:
+            raise ValueError("authorization code is required")
+        # Browser redirects may leave the code URL-encoded; decode once.
+        if "%" in raw_code:
+            raw_code = urllib.parse.unquote(raw_code)
+        runame = self.require_runame()
+        payload = self._post_token_form(
+            {
+                "grant_type": "authorization_code",
+                "code": raw_code,
+                "redirect_uri": runame,
+            }
+        )
+        refresh = payload.get("refresh_token")
+        access = payload.get("access_token")
+        if not refresh:
+            raise RuntimeError("eBay token response missing refresh_token")
+        if not access:
+            raise RuntimeError("eBay token response missing access_token")
+        path = self._store_refresh_token(str(refresh))
+        expires_in = int(payload.get("expires_in") or 7200)
+        self._user_access_token = str(access)
+        self._user_access_token_expires_at = time.time() + max(60, expires_in - 60)
+        return {
+            "ok": True,
+            "refresh_token_stored": True,
+            "refresh_token_path": str(path),
+            "refresh_token_present": True,
+            "access_token_cached": True,
+            "expires_in": expires_in,
+            "token_type": payload.get("token_type"),
+            "scope": payload.get("scope"),
+            "ebay_env": self.settings.ebay_env,
+        }
+
+    def refresh_user_token(self) -> str:
+        """Use stored refresh token to obtain a user access token."""
+        refresh = self._read_refresh_token()
+        if not refresh:
+            raise EbayUserOAuthNotConfigured(
+                "User refresh token missing. Run `firefinds ebay-oauth-url`, "
+                "complete consent, then `firefinds ebay-oauth-exchange --code ...`."
+            )
+        payload = self._post_token_form(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh,
+                "scope": " ".join(SELL_USER_SCOPES),
+            }
+        )
+        access = payload.get("access_token")
+        if not access:
+            raise RuntimeError("eBay refresh response missing access_token")
+        # eBay may rotate the refresh token — persist if present.
+        new_refresh = payload.get("refresh_token")
+        if new_refresh:
+            self._store_refresh_token(str(new_refresh))
+        expires_in = int(payload.get("expires_in") or 7200)
+        self._user_access_token = str(access)
+        self._user_access_token_expires_at = time.time() + max(60, expires_in - 60)
+        return self._user_access_token
+
+    def get_user_access_token(self, *, force_refresh: bool = False) -> str:
+        """Return a usable Sell user access token (refresh as needed)."""
+        now = time.time()
+        if (
+            not force_refresh
+            and self._user_access_token
+            and now < self._user_access_token_expires_at
+        ):
+            return self._user_access_token
+        return self.refresh_user_token()
+
+    def get_user_token_placeholder(self) -> str:
+        """Compatibility alias — returns a real user access token when configured."""
+        return self.get_user_access_token()
+
+    def user_token_status(self) -> dict[str, Any]:
+        """Secrets-free presence status for CLI ebay-user-token-status."""
+        path = self._refresh_token_path()
+        present = self.user_refresh_token_present()
+        mode = None
+        if path.is_file():
+            try:
+                mode = oct(path.stat().st_mode & 0o777)
+            except OSError:
+                mode = None
+        return {
+            "ebay_env": self.settings.ebay_env,
+            "runame_configured": bool(self._resolve_runame()),
+            "refresh_token_present": present,
+            "refresh_token_path": str(path),
+            "refresh_token_file_mode": mode,
+            "access_token_cached": bool(self._user_access_token),
+            "scopes": list(SELL_USER_SCOPES),
+            "note": (
+                "Presence only — token values are never printed. "
+                "Sell publish still gated by LIVE_LISTINGS_ENABLED / "
+                "EBAY_SANDBOX_PUBLISH_ENABLED."
+            ),
+        }
 
     def create_or_replace_inventory_item(
         self, sku: str, payload: dict[str, Any]
@@ -425,6 +668,8 @@ class EbayClient:
                 self.settings.ebay_client_secret_file
                 or os.environ.get("EBAY_CLIENT_SECRET_FILE")
             ),
+            "runame_configured": bool(self._resolve_runame()),
+            "user_refresh_token_present": self.user_refresh_token_present(),
             "browse_base": self._browse_base(),
             "sell_base": self._sell_base(),
             "listable_export_limit": self.settings.listable_export_limit,

@@ -7,7 +7,11 @@ import json
 import sys
 from pathlib import Path
 
-from firefinds.clients.ebay import EbayClient, EbayCredentialsMissing
+from firefinds.clients.ebay import (
+    EbayClient,
+    EbayCredentialsMissing,
+    EbayUserOAuthNotConfigured,
+)
 from firefinds.clients.randmar import SupplierOrdersDisabled
 from firefinds.config import get_settings
 from firefinds.services import (
@@ -100,6 +104,45 @@ def cmd_ebay_sandbox_status(_args: argparse.Namespace) -> int:
     print(json.dumps(client.sandbox_status(), indent=2))
     return 0
 
+
+def cmd_ebay_oauth_url(_args: argparse.Namespace) -> int:
+    """Print sandbox/production user-consent authorize URL (no secrets)."""
+    settings = get_settings()
+    client = EbayClient(settings)
+    try:
+        url = client.build_auth_url()
+    except (EbayCredentialsMissing, EbayUserOAuthNotConfigured) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(url)
+    return 0
+
+
+def cmd_ebay_oauth_exchange(args: argparse.Namespace) -> int:
+    """Exchange authorization code; store refresh token (mode 600). No secrets printed."""
+    settings = get_settings()
+    client = EbayClient(settings)
+    try:
+        status = client.exchange_code(args.code)
+    except (
+        EbayCredentialsMissing,
+        EbayUserOAuthNotConfigured,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        print(f"ebay-oauth-exchange failed: {exc}", file=sys.stderr)
+        return 2
+    # Status dict is secrets-free by construction.
+    print(json.dumps(status, indent=2, default=str))
+    return 0
+
+
+def cmd_ebay_user_token_status(_args: argparse.Namespace) -> int:
+    """Show user refresh-token presence only (never token values)."""
+    settings = get_settings()
+    client = EbayClient(settings)
+    print(json.dumps(client.user_token_status(), indent=2, default=str))
+    return 0
 
 def cmd_ebay_compete(args: argparse.Namespace) -> int:
     """Validate eligible SKUs (alias of validate-queue focused on compete)."""
@@ -571,6 +614,29 @@ def build_parser() -> argparse.ArgumentParser:
         "ebay-sandbox-status", help="Show eBay sandbox/gates/credentials presence"
     )
     p_status.set_defaults(func=cmd_ebay_sandbox_status)
+
+    p_oauth_url = sub.add_parser(
+        "ebay-oauth-url",
+        help="Print Sell user OAuth authorize URL (sandbox when EBAY_ENV=sandbox)",
+    )
+    p_oauth_url.set_defaults(func=cmd_ebay_oauth_url)
+
+    p_oauth_x = sub.add_parser(
+        "ebay-oauth-exchange",
+        help="Exchange authorization code for tokens; store refresh token (mode 600)",
+    )
+    p_oauth_x.add_argument(
+        "--code",
+        required=True,
+        help="Authorization code from the RuName redirect (?code=...)",
+    )
+    p_oauth_x.set_defaults(func=cmd_ebay_oauth_exchange)
+
+    p_tok = sub.add_parser(
+        "ebay-user-token-status",
+        help="Show user refresh-token presence only (never prints secrets)",
+    )
+    p_tok.set_defaults(func=cmd_ebay_user_token_status)
 
     def _add_queue_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(
