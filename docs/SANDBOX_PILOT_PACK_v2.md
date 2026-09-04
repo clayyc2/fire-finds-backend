@@ -19,6 +19,8 @@ Primary cut: **`no_competition` (233)**.
 | `KTO9Q03JXGUJ91YXDVUK` | FAIL `no_competition` |
 | `YCCY3042XFJDNCRSFT6S` | FAIL `no_competition` |
 
+**`no_competition` policy (Clay 2026-09-04):** keep **hard-fail** (current). No soft first-listing for zero Browse comps. Final 5 stays competitive-at-MAP v2.1 only.
+
 **Selection policy:** prefer **competitive-at-MAP** rows from `first_wave_shortlist_prep` top of queue — **not** high-profit contract toner that is `uncompetitive_at_map`. Never recommend selling below MAP.
 
 A prior Sandy draft that listed `5SU7…` + `6300439` / `6300441` / `6300550` / `ZP3MJKDHFU7SB8QEZ695` is **superseded** (those are mostly uncompetitive-at-MAP).
