@@ -135,6 +135,19 @@ def _resolve_ebay_client_id(secrets_dir: Path) -> str | None:
 
 @dataclass(frozen=True)
 class Settings:
+    dry_run: bool = True
+    global_kill_switch: bool = True
+    target_profit_pct: float = 0.18
+    capacity_policy: str = "balanced"  # balanced | item_first | value_first
+    capacity_headroom_pct: float = 0.05
+    monthly_item_limit: int = 0
+    monthly_value_limit_cad: float = 0.0
+    repricing_cadence_sec: int = 3600
+    discovery_cadence_sec: int = 21600
+    ranking_profit_weight: float = 0.55
+    ranking_demand_weight: float = 0.30
+    ranking_competition_weight: float = 0.15
+    retry_max_attempts: int = 5
     randmar_reseller_id: str = "2WQN9V11G"
     randmar_token_url: str = "https://auth.randmar.io/connect/token"
     randmar_api_base: str = "https://api.randmar.io"
@@ -214,6 +227,19 @@ class Settings:
         if strategy not in {"min_map_median", "median", "lowest"}:
             strategy = "min_map_median"
         return cls(
+            dry_run=_env_bool("DRY_RUN", True),
+            global_kill_switch=_env_bool("GLOBAL_KILL_SWITCH", True),
+            target_profit_pct=_env_float("TARGET_PROFIT_PCT", 0.18),
+            capacity_policy=os.environ.get("CAPACITY_POLICY", "balanced"),
+            capacity_headroom_pct=_env_float("CAPACITY_HEADROOM_PCT", 0.05),
+            monthly_item_limit=_env_int("MONTHLY_ITEM_LIMIT", 0),
+            monthly_value_limit_cad=_env_float("MONTHLY_VALUE_LIMIT_CAD", 0.0),
+            repricing_cadence_sec=_env_int("REPRICING_CADENCE_SEC", 3600),
+            discovery_cadence_sec=_env_int("DISCOVERY_CADENCE_SEC", 21600),
+            ranking_profit_weight=_env_float("RANKING_PROFIT_WEIGHT", 0.55),
+            ranking_demand_weight=_env_float("RANKING_DEMAND_WEIGHT", 0.30),
+            ranking_competition_weight=_env_float("RANKING_COMPETITION_WEIGHT", 0.15),
+            retry_max_attempts=_env_int("RETRY_MAX_ATTEMPTS", 5),
             randmar_reseller_id=os.environ.get(
                 "RANDMAR_RESELLER_ID", "2WQN9V11G"
             ),

@@ -24,7 +24,7 @@ def test_credentials_absent_by_default(settings: Settings):
 
 def test_credentials_from_secret_file(settings: Settings, tmp_path: Path):
     secrets = tmp_path / "secrets"
-    secrets.mkdir(mode=0o700)
+    secrets.mkdir(mode=0o700, exist_ok=True)
     secret_file = secrets / "randmar_api_key.txt"
     secret_file.write_text("dummy-secret\n", encoding="utf-8")
     settings2 = Settings(
@@ -42,7 +42,7 @@ def test_credentials_from_secret_file(settings: Settings, tmp_path: Path):
 
 def test_credentials_from_legacy_secret_names(settings: Settings, tmp_path: Path):
     secrets = tmp_path / "secrets"
-    secrets.mkdir(mode=0o700)
+    secrets.mkdir(mode=0o700, exist_ok=True)
     (secrets / "client_id").write_text("dummy-id\n", encoding="utf-8")
     (secrets / "client_secret").write_text("dummy-secret\n", encoding="utf-8")
     settings2 = Settings(
@@ -94,7 +94,7 @@ def _mock_urlopen_json(payload: dict | list, status: int = 200):
 
 def test_fetch_token_mocked(settings: Settings, tmp_path: Path):
     secrets = tmp_path / "secrets"
-    secrets.mkdir(mode=0o700)
+    secrets.mkdir(mode=0o700, exist_ok=True)
     secret_file = secrets / "randmar_api_key.txt"
     secret_file.write_text("dummy-secret", encoding="utf-8")
     settings2 = Settings(
@@ -121,7 +121,7 @@ def test_fetch_token_mocked(settings: Settings, tmp_path: Path):
 
 def test_get_products_json_post_mocked(settings: Settings, tmp_path: Path):
     secrets = tmp_path / "secrets"
-    secrets.mkdir(mode=0o700)
+    secrets.mkdir(mode=0o700, exist_ok=True)
     secret_file = secrets / "randmar_api_key.txt"
     secret_file.write_text("dummy-secret", encoding="utf-8")
     settings2 = Settings(
