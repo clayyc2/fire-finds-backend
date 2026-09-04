@@ -39,6 +39,7 @@ from firefinds.sku_record.metrics import (
 from firefinds.sku_record.dry_run import run_dry_run_sku
 from firefinds.services_images import backfill_safe_nationwide_images
 from firefinds.ops.exceptions import list_exceptions, rule_catalog, scan_exceptions
+from firefinds.ops.ready_sku_qa import run_ready_sku_qa
 
 
 def cmd_ingest_stub(_args: argparse.Namespace) -> int:
@@ -473,6 +474,61 @@ def cmd_backfill_images(args: argparse.Namespace) -> int:
     print(json.dumps(summary, indent=2, default=str))
     return 0
 
+def cmd_qa_ready(args: argparse.Namespace) -> int:
+    """Automated QA across ready/listable SKUs (never publish/order)."""
+    settings = get_settings()
+    if settings.live_listings_enabled or settings.supplier_orders_enabled:
+        print(
+            "Refusing: LIVE_LISTINGS_ENABLED or SUPPLIER_ORDERS_ENABLED is ON",
+            file=sys.stderr,
+        )
+        return 2
+    cohorts = None
+    if args.cohort:
+        cohorts = [args.cohort]
+    elif args.all_listable_cohorts:
+        cohorts = None  # handled below
+    preferred = ("SAFE_NATIONWIDE", "DESTINATION_SENSITIVE")
+    if args.all_listable_cohorts:
+        # Scan every listable_pass row regardless of cohort tag
+        from firefinds.db.schema import init_db
+        conn = init_db(settings.db_path)
+        rows = conn.execute(
+            "SELECT DISTINCT cohort FROM products WHERE listable_pass=1"
+        ).fetchall()
+        cohorts = sorted({str(r[0]) for r in rows if r[0]})
+        conn.close()
+    report = run_ready_sku_qa(
+        settings=settings,
+        cohorts=cohorts or preferred,
+        listable_only=not args.include_non_listable,
+        write_reports=not args.no_write,
+        report_stem=args.report_stem,
+        top_n=args.top,
+    )
+    summary = {
+        "universe_count": report["universe_count"],
+        "skus_passing": report["skus_passing"],
+        "skus_failing": report["skus_failing"],
+        "fail_counts_by_rule": report["fail_counts_by_rule"],
+        "report_json": report.get("report_json"),
+        "report_md": report.get("report_md"),
+        "listable_growth": {
+            k: report.get("listable_growth", {}).get(k)
+            for k in (
+                "prior_preferred_listable",
+                "current_preferred_listable",
+                "current_total_listable_pass",
+                "delta_total_vs_prior_preferred",
+            )
+        }
+        if report.get("listable_growth")
+        else None,
+    }
+    print(json.dumps(summary, indent=2, default=str))
+    return 1 if report["skus_failing"] else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="firefinds",
@@ -854,6 +910,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_img.set_defaults(func=cmd_backfill_images)
 
+
+
+    p_qa = sub.add_parser(
+        "qa-ready",
+        help=(
+            "Automated QA for ready/listable SKUs (shipping p75, MAP/channel, "
+            "UPC/MPN dupes, stock, margin floors, SAFE images, drafts). "
+            "Never publish/order."
+        ),
+    )
+    p_qa.add_argument(
+        "--cohort",
+        choices=["SAFE_NATIONWIDE", "DESTINATION_SENSITIVE", "QUARANTINE_UNRESOLVED"],
+        default=None,
+        help="Optional single cohort (default: SAFE_NATIONWIDE + DESTINATION_SENSITIVE)",
+    )
+    p_qa.add_argument(
+        "--all-listable-cohorts",
+        action="store_true",
+        help="Include every cohort that currently has listable_pass=1",
+    )
+    p_qa.add_argument(
+        "--include-non-listable",
+        action="store_true",
+        help="Also scan non-listable rows in selected cohorts",
+    )
+    p_qa.add_argument(
+        "--no-write",
+        action="store_true",
+        help="Skip writing data/reports/ready_sku_qa_latest.{json,md}",
+    )
+    p_qa.add_argument(
+        "--report-stem",
+        default="ready_sku_qa_latest",
+        help="Report filename stem under data/reports/",
+    )
+    p_qa.add_argument("--top", type=int, default=25, help="Top failing SKUs to list")
+    p_qa.set_defaults(func=cmd_qa_ready)
 
     return parser
 
