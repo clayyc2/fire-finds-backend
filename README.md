@@ -10,6 +10,7 @@ firefinds/
   .env.example
   secrets/                 # mode 700 — never commit
   data/                    # SQLite / exports (gitignored)
+  docs/AI_ORG.md           # AI org, pipelines, match classes, escalation
   backend/firefinds/
     config.py
     db/schema.py           # products + ebay_competition + ranked_queue
@@ -120,6 +121,14 @@ PYTHONPATH=. python -m firefinds.cli.main pipeline-freeze-split-draft
 `--inject-ship CAD` is **test-only** to inject a resolved shipping cost. Production
 must use Randmar quote endpoints.
 
+
+## AI organization
+
+See [`docs/AI_ORG.md`](docs/AI_ORG.md) for the Fire Finds AI org (CTO orchestrator,
+Product Research, Listing & Creative, Operations), shared SKU source of truth,
+`RANDMAR_FIRST` / `EBAY_DEMAND_FIRST` pipelines, match classes
+`A_EXACT` / `B_VARIANT` / `C_SUBSTITUTE`, creative A/B, safety gates, and
+escalation to **Fire Finds Ops**.
 
 ## Dual pipelines
 
