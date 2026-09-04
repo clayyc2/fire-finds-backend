@@ -88,6 +88,15 @@ firefinds ebay-user-token-status  # presence only
 user refresh token present for upcoming sandbox Sell inventory/offer work
 (still no publish until §2).
 
+## 1c. Sandbox seller registration + Business Policies (Clay)
+
+See [`SANDBOX_SELLER_REGISTRATION_STEPS.md`](SANDBOX_SELLER_REGISTRATION_STEPS.md).
+
+- [ ] `TESTUSER_shopfirefindsnow`: `sellerRegistrationCompleted=true`
+- [ ] Business Policies opted in on Sandbox; payment/return/fulfillment policies exist for `EBAY_CA`
+- [ ] Real policy IDs stored (secure/env) — **never fabricate**
+- [x] Final 5 `categoryId` resolved via Taxonomy (`16204` toners / `112529` headphones)
+
 ## 2. Sandbox / API validation
 
 > **Gate split (2026-09-04):** Sandbox **inventory + offer** writes are allowed when
