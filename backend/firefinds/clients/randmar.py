@@ -398,6 +398,123 @@ class RandmarClient:
         payload = self.shipping_label_estimate(details)
         return parse_shipvia_estimates(payload)
 
+    def _request_bytes(
+        self,
+        method: str,
+        url: str,
+        *,
+        use_token: bool = False,
+        timeout: int = 120,
+        label: str = "Randmar API",
+        accept: str = "*/*",
+    ) -> tuple[bytes, str]:
+        """GET binary body + Content-Type. Default anonymous (public Product/Image)."""
+        headers = self._auth_headers(use_token=use_token)
+        headers["Accept"] = accept
+        # Avoid forcing JSON content-type on binary GETs
+        headers.pop("Content-Type", None)
+        req = urllib.request.Request(url, data=None, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                ctype = resp.headers.get("Content-Type", "") or ""
+                return raw, ctype
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")[:240]
+            except Exception:
+                body = ""
+            suffix = f": {body}" if body else ""
+            raise RuntimeError(f"{label} failed with HTTP {exc.code}{suffix}") from None
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"{label} failed: {exc.reason}") from None
+
+    def get_product_images(self, sku: str, *, use_token: bool = False) -> list[dict[str, Any]]:
+        """GET /Product/{sku}/Images — list existing product images (read-only).
+
+        Public ProductImageInfo list (Url, ImageId, IsPrimary, …). Works
+        anonymously (OpenAPI Public) and with reseller OAuth. Prefer this over
+        manufacturer Images (reseller auth → 401) and never call GenerateImage /
+        AppendImage / upload POSTs. Default use_token=False (no Integration secret).
+        """
+        from urllib.parse import quote
+
+        base = self.settings.randmar_api_base.rstrip("/")
+        url = f"{base}/Product/{quote(str(sku), safe='')}/Images"
+        payload = self._request_json(
+            "GET",
+            url,
+            use_token=use_token,
+            timeout=60,
+            label="Randmar Product/Images",
+        )
+        if payload is None:
+            return []
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        raise RuntimeError("Randmar Product/Images returned unexpected payload shape")
+
+    def download_product_image(
+        self,
+        sku: str,
+        image_id: str,
+        *,
+        use_token: bool = False,
+    ) -> tuple[bytes, str]:
+        """GET /Product/{sku}/Image/{imageId} — download still bytes (read-only).
+
+        Public endpoint; default anonymous. Returns (body, content_type).
+        """
+        from urllib.parse import quote
+
+        base = self.settings.randmar_api_base.rstrip("/")
+        url = (
+            f"{base}/Product/{quote(str(sku), safe='')}"
+            f"/Image/{quote(str(image_id), safe='')}"
+        )
+        return self._request_bytes(
+            "GET",
+            url,
+            use_token=use_token,
+            timeout=120,
+            label="Randmar Product/Image",
+            accept="image/*,*/*",
+        )
+
+    def get_manufacturer_product_images(
+        self,
+        manufacturer_id: str,
+        sku: str,
+        *,
+        use_token: bool = True,
+    ) -> list[dict[str, Any]]:
+        """GET /V4/Manufacturer/{mfrId}/Product/{sku}/Images (read-only list).
+
+        Reseller credentials typically receive HTTP 401/403. Prefer
+        get_product_images() for catalog backfill.
+        """
+        from urllib.parse import quote
+
+        base = self.settings.randmar_api_base.rstrip("/")
+        mid = quote(str(manufacturer_id), safe="")
+        sku_q = quote(str(sku), safe="")
+        url = f"{base}/V4/Manufacturer/{mid}/Product/{sku_q}/Images"
+        payload = self._request_json(
+            "GET",
+            url,
+            use_token=use_token,
+            timeout=60,
+            label="Randmar Manufacturer Product/Images",
+        )
+        if payload is None:
+            return []
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        raise RuntimeError(
+            "Randmar Manufacturer Product/Images returned unexpected payload shape"
+        )
+
     def place_order(self, *_args: Any, **_kwargs: Any) -> None:
 
         """Order placement — gated OFF by default."""

@@ -121,6 +121,7 @@ PYTHONPATH=. python -m firefinds.cli.main pipeline-freeze-split-draft
 PYTHONPATH=. python -m firefinds.cli.main sku-record upsert-metrics --sku SKU --pipeline-source RANDMAR_FIRST --match-confidence A_EXACT
 PYTHONPATH=. python -m firefinds.cli.main sku-record export-learning [--comparison-cohort-id ID]
 PYTHONPATH=. python -m firefinds.cli.main dry-run-sku [--sku SKU] [--snapshot-id YYYYMMDD_HHMM]
+PYTHONPATH=. python -m firefinds.cli.main backfill-images [--snapshot-id YYYYMMDD_HHMM] [--limit N]
 ```
 
 `--inject-ship CAD` is **test-only** to inject a resolved shipping cost. Production
@@ -129,7 +130,7 @@ must use Randmar quote endpoints.
 
 ## AI organization
 
-See [`docs/AI_ORG.md`](docs/AI_ORG.md) and [`docs/EBAY_UNLOCK_CHECKLIST.md`](docs/EBAY_UNLOCK_CHECKLIST.md) for the Fire Finds AI org (CTO orchestrator,
+See [`docs/AI_ORG.md`](docs/AI_ORG.md) and [`docs/RANDMAR_IMAGES.md`](docs/RANDMAR_IMAGES.md) and [`docs/EBAY_UNLOCK_CHECKLIST.md`](docs/EBAY_UNLOCK_CHECKLIST.md) for the Fire Finds AI org (CTO orchestrator,
 Product Research, Listing & Creative, Operations), shared SKU source of truth,
 `RANDMAR_FIRST` / `EBAY_DEMAND_FIRST` pipelines, match classes
 `A_EXACT` / `B_VARIANT` / `C_SUBSTITUTE`, creative A/B, safety gates, and

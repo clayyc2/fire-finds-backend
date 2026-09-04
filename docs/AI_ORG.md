@@ -81,6 +81,11 @@ draft SKU:
 | **A — original** | Supplier / catalog imagery and copy as-is (normalized for eBay Inventory shape) |
 | **B — AI-enhanced** | AI-improved thumbs / lighting / crop / listing copy; same SKU identity and facts |
 
+**AI thumbs are deferred** until supplier image URL backfill is complete and
+Ops authorizes generation. Prefer read-only Randmar `GET /Product/{sku}/Images`
+URLs for ORIGINAL_SUPPLIER; never rotate the catalog-read Integration key to
+chase manufacturer Images 401s (see `docs/RANDMAR_IMAGES.md`).
+
 A/B is for **draft comparison and later sell-through metrics only**. Neither arm
 is published while listings gates are OFF. Marketplace metric columns on the shared SKU record
 (`impressions`, `ctr`, `conversion_rate`, `sales_units`, `sell_through`,
@@ -118,6 +123,13 @@ Escalate to a **human** (Clay / Fire Finds Ops) when any of the following hold:
 Escalation channel: **Fire Finds Ops**. Include SKU, pipeline_source, cohort,
 match class, gate state, and a one-line ask. Do not ask the channel to bypass
 gates in chat — flip gates only via explicit env / human change after E2E.
+
+## Ops exception rules
+
+Deterministic auto-flag / pause for stock≤buffer, UNRESOLVED shipping, profit
+&lt; $8 CAD, margin &lt; 12%, MAP breach, channel/auth fail, and API ingest
+failure streaks. See **`docs/OPS_EXCEPTIONS.md`**. CLI: `ops-exceptions scan`
+/ `ops-exceptions list` (also `firefinds ops-exceptions …`).
 
 ## Channel
 

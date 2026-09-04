@@ -37,6 +37,8 @@ from firefinds.sku_record.metrics import (
     upsert_sku_metrics,
 )
 from firefinds.sku_record.dry_run import run_dry_run_sku
+from firefinds.services_images import backfill_safe_nationwide_images
+from firefinds.ops.exceptions import list_exceptions, rule_catalog, scan_exceptions
 
 
 def cmd_ingest_stub(_args: argparse.Namespace) -> int:
@@ -411,6 +413,66 @@ def cmd_batch_creative_drafts(args: argparse.Namespace) -> int:
     return 0
 
 
+
+
+
+def cmd_ops_exceptions(args: argparse.Namespace) -> int:
+    """Deterministic Ops exception scan / list (no AI)."""
+    settings = get_settings()
+    if args.ops_command == "scan":
+        summary = scan_exceptions(
+            settings=settings,
+            snapshot_id=args.snapshot_id,
+            limit=args.limit,
+            ingest_streak_threshold=args.ingest_streak_threshold,
+            apply_pause=not args.no_pause,
+        )
+        print(json.dumps(summary, indent=2, default=str))
+        return 0
+    if args.ops_command == "list":
+        status = None if (args.status or "").strip().lower() == "all" else args.status
+        rows = list_exceptions(
+            settings=settings,
+            status=status,
+            rule_code=args.rule,
+            sku=args.sku,
+            limit=args.limit,
+        )
+        print(json.dumps(rows, indent=2, default=str))
+        print(f"# ops-exceptions list: {len(rows)} rows", file=sys.stderr)
+        return 0
+    if args.ops_command == "rules":
+        print(json.dumps(rule_catalog(), indent=2))
+        return 0
+    print(f"unknown ops-exceptions subcommand: {args.ops_command}", file=sys.stderr)
+    return 2
+
+def cmd_backfill_images(args: argparse.Namespace) -> int:
+    """Read-only Randmar Product/Images (+ Image/{id} stills) for SAFE_NATIONWIDE."""
+    settings = get_settings()
+    if settings.live_listings_enabled or settings.supplier_orders_enabled:
+        print(
+            "Refusing: LIVE_LISTINGS_ENABLED or SUPPLIER_ORDERS_ENABLED is ON",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        summary = backfill_safe_nationwide_images(
+            settings=settings,
+            snapshot_id=args.snapshot_id,
+            sleep_sec=args.sleep,
+            limit=args.limit,
+            resume=not args.no_resume,
+            force=args.force,
+            download_binaries=not args.urls_only,
+            use_token=bool(args.use_token),
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"backfill-images failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(summary, indent=2, default=str))
+    return 0
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="firefinds",
@@ -705,6 +767,93 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip AI_ENHANCED creative twin files",
     )
     p_batch.set_defaults(func=cmd_batch_creative_drafts)
+
+
+    p_ops = sub.add_parser(
+        "ops-exceptions",
+        help="Deterministic Ops exception engine (scan / list / rules)",
+    )
+    ops_sub = p_ops.add_subparsers(dest="ops_command", required=True)
+
+    p_ops_scan = ops_sub.add_parser(
+        "scan",
+        help="Scan candidates/simulated listings; persist exceptions + pause",
+    )
+    p_ops_scan.add_argument("--snapshot-id", default=None)
+    p_ops_scan.add_argument("--limit", type=int, default=None)
+    p_ops_scan.add_argument(
+        "--ingest-streak-threshold",
+        type=int,
+        default=3,
+        help="Trailing ingest failure count that flags API_INGEST_FAILURE_STREAK",
+    )
+    p_ops_scan.add_argument(
+        "--no-pause",
+        action="store_true",
+        help="Record exceptions without setting products.paused",
+    )
+    p_ops_scan.set_defaults(func=cmd_ops_exceptions)
+
+    p_ops_list = ops_sub.add_parser(
+        "list", help="List persisted ops_exceptions (newest first)"
+    )
+    p_ops_list.add_argument(
+        "--status",
+        default="open,paused",
+        help="Comma-separated statuses (default: open,paused; use all for no filter)",
+    )
+    p_ops_list.add_argument("--rule", default=None, help="Filter by rule_code")
+    p_ops_list.add_argument("--sku", default=None)
+    p_ops_list.add_argument("--limit", type=int, default=100)
+    p_ops_list.set_defaults(func=cmd_ops_exceptions)
+
+    p_ops_rules = ops_sub.add_parser(
+        "rules", help="Print deterministic exception rule catalog"
+    )
+    p_ops_rules.set_defaults(func=cmd_ops_exceptions)
+
+    p_img = sub.add_parser(
+        "backfill-images",
+        help=(
+            "Backfill SAFE_NATIONWIDE supplier stills via public read-only "
+            "GET /Product/{sku}/Images + /Image/{id} (checkpointed; never GenerateImage)"
+        ),
+    )
+    p_img.add_argument("--snapshot-id", default="20260903_1744")
+    p_img.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional SKU cap for smoke tests",
+    )
+    p_img.add_argument(
+        "--sleep",
+        type=float,
+        default=None,
+        help="Seconds between API calls (default: SHIP_QUOTE_SLEEP_SEC)",
+    )
+    p_img.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Ignore checkpoint and re-fetch all target SKUs",
+    )
+    p_img.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-fetch even when checkpoint marks SKU complete",
+    )
+    p_img.add_argument(
+        "--urls-only",
+        action="store_true",
+        help="Skip binary Image/{id} downloads; list URLs only",
+    )
+    p_img.add_argument(
+        "--use-token",
+        action="store_true",
+        help="Use OAuth bearer (default: public anonymous Product/Images)",
+    )
+    p_img.set_defaults(func=cmd_backfill_images)
+
 
     return parser
 

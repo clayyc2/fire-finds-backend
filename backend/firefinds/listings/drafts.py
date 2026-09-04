@@ -36,6 +36,26 @@ def build_inventory_draft(
     if product.get("upc_norm") or product.get("upc"):
         aspects["UPC"] = [str(product.get("upc_norm") or product.get("upc"))]
 
+    image_urls: list[str] = []
+    raw_images = product.get("image_urls")
+    if isinstance(raw_images, str) and raw_images.strip():
+        import json as _json
+
+        try:
+            raw_images = _json.loads(raw_images)
+        except Exception:
+            raw_images = None
+    if isinstance(raw_images, list):
+        for item in raw_images:
+            if isinstance(item, str) and item.startswith("http"):
+                image_urls.append(item)
+            elif isinstance(item, dict):
+                u = item.get("url") or item.get("Url")
+                if u:
+                    image_urls.append(str(u))
+    elif isinstance(product.get("image_url_list"), list):
+        image_urls = [str(u) for u in product["image_url_list"] if u]
+
     inventory_item = {
         "sku": sku,
         "product": {
@@ -49,6 +69,7 @@ def build_inventory_draft(
             "mpn": str(product.get("mpn_norm") or product.get("mpn") or "") or None,
             "brand": product.get("manufacturer"),
             "description": title,
+            "imageUrls": image_urls,
         },
         "condition": "NEW",
         "availability": {

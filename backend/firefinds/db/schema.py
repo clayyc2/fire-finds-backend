@@ -201,6 +201,25 @@ CREATE TABLE IF NOT EXISTS quarantine_unresolved_shipping (
 );
 """
 
+
+OPS_EXCEPTIONS_DDL = """
+CREATE TABLE IF NOT EXISTS ops_exceptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sku TEXT NOT NULL,
+    rule_code TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    message TEXT,
+    detail_json TEXT,
+    snapshot_id TEXT,
+    pipeline_source TEXT,
+    cohort TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+);
+"""
+
 INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_products_score ON products(score DESC);",
     "CREATE INDEX IF NOT EXISTS idx_products_score_pass ON products(score_pass);",
@@ -217,6 +236,9 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_candidate_cohorts_cohort ON candidate_cohorts(cohort);",
     "CREATE INDEX IF NOT EXISTS idx_candidate_cohorts_pipeline ON candidate_cohorts(pipeline_source);",
     "CREATE INDEX IF NOT EXISTS idx_quarantine_unresolved_sku ON quarantine_unresolved_shipping(sku);",
+    "CREATE INDEX IF NOT EXISTS idx_ops_exceptions_sku ON ops_exceptions(sku);",
+    "CREATE INDEX IF NOT EXISTS idx_ops_exceptions_rule ON ops_exceptions(rule_code);",
+    "CREATE INDEX IF NOT EXISTS idx_ops_exceptions_status ON ops_exceptions(status);",
 ]
 
 PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
@@ -292,6 +314,11 @@ PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("sell_through", "REAL"),
     ("listing_status", "TEXT"),
     ("order_status", "TEXT"),
+    ("image_urls", "TEXT"),
+    ("image_count", "INTEGER DEFAULT 0"),
+    ("images_fetched_at", "TEXT"),
+    ("supplier_image_urls", "TEXT"),
+    ("supplier_image_local_paths", "TEXT"),
 ]
 
 
@@ -357,6 +384,7 @@ def migrate_schema(conn: sqlite3.Connection) -> list[str]:
     conn.executescript(SHIPPING_QUOTES_DDL)
     conn.executescript(CANDIDATE_COHORTS_DDL)
     conn.executescript(QUARANTINE_UNRESOLVED_DDL)
+    conn.executescript(OPS_EXCEPTIONS_DDL)
     rq_cols = _existing_columns(conn, "ranked_queue")
     for name, decl in RANKED_QUEUE_COLUMN_MIGRATIONS:
         if name not in rq_cols:
@@ -384,6 +412,7 @@ def init_db(db_path: Path | str) -> sqlite3.Connection:
     conn.executescript(SHIPPING_QUOTES_DDL)
     conn.executescript(CANDIDATE_COHORTS_DDL)
     conn.executescript(QUARANTINE_UNRESOLVED_DDL)
+    conn.executescript(OPS_EXCEPTIONS_DDL)
     # Migrate additive columns BEFORE indexes that reference them (eligible, etc.)
     migrate_schema(conn)
     conn.commit()
