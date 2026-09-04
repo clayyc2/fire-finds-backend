@@ -48,6 +48,13 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _int_flag(row: Mapping[str, Any], key: str, *, default: int = 0) -> int:
+    """Coerce a 0/1 flag; do not use ``x or 1`` (0 would become 1)."""
+    if key not in row or row[key] is None:
+        return 1 if default else 0
+    return 1 if row[key] else 0
+
+
 def _ship_to(settings: Settings) -> dict[str, str]:
     return {
         "Name": settings.ship_to_name,
@@ -568,8 +575,8 @@ def validate_eligible_queue(
                 r.get("listable_margin"),
                 int(r.get("listable_pass") or 0),
                 r.get("listable_reason"),
-                int(r.get("provisional_public_ebay") or 0),
-                int(r.get("needs_official_ebay_validation") or 1),
+                _int_flag(r, "provisional_public_ebay", default=0),
+                _int_flag(r, "needs_official_ebay_validation", default=1),
             ),
         )
 
@@ -597,8 +604,8 @@ def validate_eligible_queue(
                 r.get("listable_margin"),
                 r.get("map"),
                 r.get("stock"),
-                int(r.get("provisional_public_ebay") or 0),
-                int(r.get("needs_official_ebay_validation") or 1),
+                _int_flag(r, "provisional_public_ebay", default=0),
+                _int_flag(r, "needs_official_ebay_validation", default=1),
                 r.get("listable_reason"),
                 r.get("ship_p75"),
                 r.get("shipping_status"),

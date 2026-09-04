@@ -209,3 +209,73 @@ def test_validate_queue_flags_expensive_destinations(settings: Settings):
     ).fetchone()
     assert row["fails_expensive_destinations"] == 1
     assert row["ship_p75"] is not None
+
+
+def test_int_flag_preserves_zero_needs_official():
+    """Regression: ``int(x or 1)`` turned cleared needs_official=0 into 1."""
+    from firefinds.services_queue import _int_flag
+
+    assert _int_flag({"needs_official_ebay_validation": 0}, "needs_official_ebay_validation", default=1) == 0
+    assert _int_flag({"needs_official_ebay_validation": False}, "needs_official_ebay_validation", default=1) == 0
+    assert _int_flag({"needs_official_ebay_validation": 1}, "needs_official_ebay_validation", default=1) == 1
+    assert _int_flag({}, "needs_official_ebay_validation", default=1) == 1
+    assert _int_flag({"provisional_public_ebay": 0}, "provisional_public_ebay", default=0) == 0
+    # Document the historical bug shape
+    assert int(({"needs_official_ebay_validation": 0}.get("needs_official_ebay_validation") or 1)) == 1
+
+
+def test_official_browse_clears_needs_official_on_ranked_queue(settings: Settings):
+    """Official Browse success must persist needs_official=0 / provisional=0."""
+    ingest_stub(settings)
+    conn = init_db(settings.db_path)
+    # Seed provisional flags as if EDF / public scrape left them set
+    conn.execute(
+        "UPDATE products SET provisional_public_ebay=1, needs_official_ebay_validation=1"
+    )
+    conn.commit()
+
+    snap = CompetitionSnapshot(
+        query="official",
+        query_type="upc",
+        item_count=5,
+        lowest_price=100.0,
+        median_price=110.0,
+        sample_url="https://ebay.ca/itm/1",
+    )
+    ebay = MagicMock()
+    ebay.require_credentials.return_value = None
+    ebay.competition_for_product.return_value = snap
+
+    out = validate_eligible_queue(
+        settings=settings,
+        ebay=ebay,
+        quote_provider=InjectedQuoteProvider(default_cost=12.0),
+        dry_run=False,
+        write_drafts=False,
+    )
+    assert out["summary"]["listable_pass_count"] >= 1
+    assert ebay.competition_for_product.called
+
+    rows = conn.execute(
+        "SELECT sku, provisional_public_ebay, needs_official_ebay_validation "
+        "FROM ranked_queue"
+    ).fetchall()
+    assert rows, "expected ranked_queue survivors"
+    for row in rows:
+        assert row["provisional_public_ebay"] == 0, row["sku"]
+        assert row["needs_official_ebay_validation"] == 0, row["sku"]
+
+    hist = conn.execute(
+        "SELECT provisional_public_ebay, needs_official_ebay_validation "
+        "FROM ebay_competition ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert hist["provisional_public_ebay"] == 0
+    assert hist["needs_official_ebay_validation"] == 0
+
+    prod = conn.execute(
+        "SELECT provisional_public_ebay, needs_official_ebay_validation "
+        "FROM products WHERE sku=?",
+        (rows[0]["sku"],),
+    ).fetchone()
+    assert prod["provisional_public_ebay"] == 0
+    assert prod["needs_official_ebay_validation"] == 0
