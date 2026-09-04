@@ -463,8 +463,14 @@ def evaluate_sku(
     return fails
 
 
-def _listable_growth_note(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Explain ~311 listable_pass vs ~296 preferred SAFE+DEST."""
+def _listable_growth_note(
+    conn: sqlite3.Connection,
+    *,
+    snapshot_id: str | None = None,
+    prior_preferred: int = 296,
+    hourly_checkpoint_listable: int = 311,
+) -> dict[str, Any]:
+    """Explain preferred SAFE+DEST listable vs prior baselines."""
     total_listable = conn.execute(
         "SELECT COUNT(*) FROM products WHERE listable_pass=1"
     ).fetchone()[0]
@@ -478,6 +484,8 @@ def _listable_growth_note(conn: sqlite3.Connection) -> dict[str, Any]:
         ).fetchall()
     }
     preferred = sum(by_cohort.get(c, 0) for c in PREFERRED_COHORTS)
+    safe_n = by_cohort.get("SAFE_NATIONWIDE", 0)
+    dest_n = by_cohort.get("DESTINATION_SENSITIVE", 0)
     ranked_n = conn.execute("SELECT COUNT(*) FROM ranked_queue").fetchone()[0]
     quarantine_bleed = [
         dict(r)
@@ -501,30 +509,37 @@ def _listable_growth_note(conn: sqlite3.Connection) -> dict[str, Any]:
             """
         ).fetchall()
     ]
-    prior_preferred = 296  # authorize-drafts / SAFE+DEST ranked baseline
-    hourly_checkpoint_listable = 311  # data/hourly_refresh_report.json (~07:14Z)
+    snap_bit = f" snapshot={snapshot_id}." if snapshot_id else ""
+    if quarantine_bleed:
+        q_bit = (
+            f"{len(quarantine_bleed)} QUARANTINE_UNRESOLVED still listable_pass "
+            f"without SAFE/DEST retag. "
+        )
+    else:
+        q_bit = "No quarantine listable bleed. "
     return {
+        "snapshot_id": snapshot_id,
         "prior_preferred_listable": prior_preferred,
         "hourly_checkpoint_total_listable": hourly_checkpoint_listable,
         "current_preferred_listable": preferred,
         "current_total_listable_pass": total_listable,
         "ranked_queue_count": ranked_n,
         "listable_by_cohort": by_cohort,
+        "delta_preferred_vs_prior": preferred - prior_preferred,
         "delta_total_vs_prior_preferred": total_listable - prior_preferred,
         "delta_total_vs_hourly_checkpoint": total_listable - hourly_checkpoint_listable,
         "explanation": (
-            f"Preferred SAFE+DEST listable remains {preferred} "
-            f"(prior authorize/ranked set was {prior_preferred}: "
-            f"SAFE_NATIONWIDE 254 + DESTINATION_SENSITIVE 42). "
-            f"Total products.listable_pass moved {prior_preferred}→"
-            f"{hourly_checkpoint_listable} (hourly refresh)→{total_listable} now "
-            f"because {len(quarantine_bleed)} QUARANTINE_UNRESOLVED SKUs gained "
-            f"RESOLVED shipping + passed $8/12% floors without cohort retag. "
-            f"ranked_queue={ranked_n} (includes some quarantine bleed). "
+            f"Preferred SAFE+DEST listable is {preferred} "
+            f"(SAFE_NATIONWIDE {safe_n} + DESTINATION_SENSITIVE {dest_n})."
+            f"{snap_bit} "
+            f"Prior preferred baseline was {prior_preferred}; "
+            f"hourly checkpoint total listable was {hourly_checkpoint_listable}; "
+            f"now total listable_pass={total_listable}, ranked_queue={ranked_n}. "
+            + q_bit
             + (
                 f"EBAY_DEMAND_FIRST listable: {len(edf)}."
                 if edf
-                else "No EBAY_DEMAND_FIRST listable in current snapshot."
+                else "No EBAY_DEMAND_FIRST listable."
             )
         ),
         "quarantine_listable_skus": [r["sku"] for r in quarantine_bleed],
@@ -541,6 +556,7 @@ def run_ready_sku_qa(
     top_n: int = 25,
     write_reports: bool = True,
     report_stem: str = "ready_sku_qa_latest",
+    snapshot_id: str | None = None,
 ) -> dict[str, Any]:
     """Run QA across ready SKUs; optionally write JSON + Markdown reports."""
     settings = settings or get_settings()
@@ -584,7 +600,11 @@ def run_ready_sku_qa(
         key=lambda x: (-x["fail_count"], x["sku"]),
     )[:top_n]
 
-    growth = _listable_growth_note(conn) if include_all_listable_note else None
+    growth = (
+        _listable_growth_note(conn, snapshot_id=snapshot_id)
+        if include_all_listable_note
+        else None
+    )
     gates = {
         "LIVE_LISTINGS_ENABLED": bool(settings.live_listings_enabled),
         "SUPPLIER_ORDERS_ENABLED": bool(settings.supplier_orders_enabled),
@@ -594,6 +614,7 @@ def run_ready_sku_qa(
 
     report: dict[str, Any] = {
         "generated_at": _utc_now(),
+        "snapshot_id": snapshot_id,
         "db_path": str(settings.db_path),
         "gates": gates,
         "gates_note": "QA only — never publish/order",
@@ -639,6 +660,8 @@ def render_markdown_report(report: Mapping[str, Any]) -> str:
     lines.append("# Ready SKU QA")
     lines.append("")
     lines.append(f"Generated: `{report.get('generated_at')}` (UTC)")
+    if report.get("snapshot_id"):
+        lines.append(f"Snapshot: `{report.get('snapshot_id')}`")
     lines.append("")
     lines.append("## Gates (must stay OFF)")
     for k, v in (report.get("gates") or {}).items():
@@ -671,7 +694,9 @@ def render_markdown_report(report: Mapping[str, Any]) -> str:
     lines.append("")
     growth = report.get("listable_growth")
     if growth:
-        lines.append("## Listable growth (296 → ~311+)")
+        prior = growth.get("prior_preferred_listable")
+        cur = growth.get("current_preferred_listable")
+        lines.append(f"## Listable growth ({prior} → {cur})")
         lines.append("")
         lines.append(
             f"- Prior preferred (ranked/drafts): "

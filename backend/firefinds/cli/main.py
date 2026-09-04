@@ -505,9 +505,12 @@ def cmd_qa_ready(args: argparse.Namespace) -> int:
         write_reports=not args.no_write,
         report_stem=args.report_stem,
         top_n=args.top,
+        snapshot_id=args.snapshot_id,
     )
     summary = {
+        "snapshot_id": report.get("snapshot_id"),
         "universe_count": report["universe_count"],
+        "universe_by_cohort": report.get("universe_by_cohort"),
         "skus_passing": report["skus_passing"],
         "skus_failing": report["skus_failing"],
         "fail_counts_by_rule": report["fail_counts_by_rule"],
@@ -947,6 +950,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report filename stem under data/reports/",
     )
     p_qa.add_argument("--top", type=int, default=25, help="Top failing SKUs to list")
+    p_qa.add_argument(
+        "--snapshot-id",
+        default=None,
+        help=(
+            "Stamp report with shipping-complete snapshot id "
+            "(e.g. 20260904_1224); live DB is still the QA source"
+        ),
+    )
     p_qa.set_defaults(func=cmd_qa_ready)
 
     return parser
