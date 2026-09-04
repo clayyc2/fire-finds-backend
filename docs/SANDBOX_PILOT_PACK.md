@@ -1,4 +1,4 @@
-> **Live Stage-2 pack:** see **`docs/SANDBOX_PILOT_PACK_v2.md`** (competitive-at-MAP Final 5; snapshot `20260904_1311`; ranked listable **149**).  
+> **Live Stage-2 pack:** see **`docs/SANDBOX_PILOT_PACK_v2.md`** (competitive-at-MAP Final 5; snapshot `20260904_1348`; ranked listable **152**).  
 > This file documents historical Final 5 v1 (mostly `no_competition` after official Browse CA).
 
 # SAFE_NATIONWIDE sandbox pilot pack (pointer)
@@ -15,7 +15,7 @@ Full draft (gitignored under `data/`):
 
 ## Cohort snapshot migration
 
-- **Live / current freeze:** `20260904_1311` — SAFE **124** / DEST **25** / QUARANTINE **101** (ranked listable **149** post Browse CA compete). See `docs/SANDBOX_PILOT_PACK_v2.md`.
+- **Live / current freeze:** `20260904_1348` — SAFE **127** / DEST **25** / QUARANTINE **85** (ranked listable **152** post Band-A Browse keep). See `docs/SANDBOX_PILOT_PACK_v2.md`.
 - **Prior freeze:** `20260904_1224` — SAFE 289 / DEST 46 / QUARANTINE 101 (pre-compete ranked **335**; superseded after official Browse cut).
 - Earlier: `20260904_0140` (SAFE 275) · `20260903_1744` (SAFE 254).
 - Refresh evidence: `data/reports/cohort_refresh_latest.md`.

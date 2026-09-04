@@ -27,7 +27,7 @@ A prior Sandy draft that listed `5SU7…` + `6300439` / `6300441` / `6300550` / 
 
 ## Final 5 v2 (competitive-at-MAP)
 
-Live cohort freeze: **`20260904_1311`** — SAFE **124** / DEST **25** / QUARANTINE **101** (ranked listable **149**).
+Live cohort freeze: **`20260904_1348`** — SAFE **127** / DEST **25** / QUARANTINE **85** (ranked listable **152**).
 
 | # | SKU | MAP | Browse med | Uncomp@MAP | Stock | Dry-run |
 |--:|-----|----:|-----------:|:----------:|------:|:-------:|
@@ -50,8 +50,8 @@ All five: `SIMULATED_LISTED` + `SIMULATED_ORDER`; `live_publish=false`; `supplie
 - First-wave shortlist: `data/reports/first_wave_shortlist_prep_20260904_1224.md`
 - MAP gaps: `data/reports/map_vs_browse_gaps_20260904_1224.md`
 - Cohort refresh: `data/reports/cohort_refresh_latest.md`
-- Snapshot: `data/snapshots/20260904_1311_shipping_complete/`
-- Cohorts: `data/cohorts/20260904_1311/randmar_first/`
+- Snapshot: `data/snapshots/20260904_1348_shipping_complete/`
+- Cohorts: `data/cohorts/20260904_1348/randmar_first/`
 
 ## Safety
 

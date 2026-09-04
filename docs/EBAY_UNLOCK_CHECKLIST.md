@@ -1,9 +1,10 @@
 # eBay unlock checklist
 
-> **Current stage (2026-09-04):** **Stage 0 ready** — RANDMAR_FIRST cohorts frozen (`20260904_1224`; migrated from `20260904_0140` / `20260903_1744`), SAFE_NATIONWIDE drafts + ORIGINAL_SUPPLIER creative present, quarantine excluded from live waves, gates **OFF**.  
-> **Sandbox Final 5:** still **SAFE**; Stage 0 dry-run pack **5/5 PASS**.  
-> **Blocked on:** §1b RuName + Sell **user** OAuth (refresh token). Sandbox client-credentials works; user consent not done yet. No sandbox publish until user token lands and §2 is complete.  
-> Gates stay OFF. Browse may still be provisional until production Browse keys are confirmed for CA competition.
+> **Current stage (2026-09-04):** **Stage 0 ready / Stage-2 prep** — live freeze **`20260904_1348`** (post Band-A Browse keep): SAFE **127** / DEST **25** / QUAR **85** / ranked listable **152**. Prior `20260904_1311` SAFE 124 / DEST 25 / QUAR 101 / ranked 149. Prior freezes `20260904_1224` / `0140` / `1744` superseded for live ops. SAFE drafts + ORIGINAL_SUPPLIER creative present; quarantine excluded; gates **OFF**.  
+> **Sandbox Final 5 (pack v2.1):** competitive-at-MAP **SAFE**; dry-runs **5/5 PASS** — `data/reports/sandbox_pack_v2_dry_runs.md` (+ `sandbox_pilot_pack_v2.*`).  
+> **First-wave 25:** dry-runs **25/25 PASS** on `20260904_1311` — `data/reports/first_wave_25_dry_runs_20260904_1311.md` (+ `.json`). Wave playbook: `docs/STAGE2_WAVE_SIZING_PLAYBOOK.md`.  
+> **Blocked on:** §2 sandbox offer path (Business Policy / sellerRegistrationCompleted) → then Clay approve sandbox publish. §1b user OAuth **done**. Gates stay OFF.  
+> Gates stay OFF. Official Browse CA compete already applied (listable 335→149); fee/Store readiness: `data/reports/ebay_ca_fee_model_149_book.md`.
 
 Gates stay **OFF** until each stage below is explicitly completed and human-approved.
 Default: `LIVE_LISTINGS_ENABLED=false`, `EBAY_SANDBOX_PUBLISH_ENABLED=false`,
@@ -14,20 +15,21 @@ separate unlock and is out of scope here.
 
 ## 0. Preconditions (ready-to-list backlog)
 
-- [x] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized (`20260904_1224`, 289 SKUs; prior `20260904_0140` had 275; `20260903_1744` had 254)
-- [x] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave) (46 SKUs on `20260904_1224`; unchanged vs `20260904_0140`)
-- [x] `QUARANTINE_UNRESOLVED` excluded from any live wave (101 SKUs on `20260904_1224`; was 113 on `20260904_0140` / 140 on `20260903_1744`; recovery shortlist is ops-only)
+- [x] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized (`20260904_1348`, **127** SKUs; prior `20260904_1311` had 124; `20260904_1224` had 289; `20260904_0140` had 275; `20260903_1744` had 254)
+- [x] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave) (**25** SKUs on `20260904_1348` / `20260904_1311`; was 46 on `20260904_1224`)
+- [x] `QUARANTINE_UNRESOLVED` excluded from any live wave (**85** SKUs on `20260904_1348`; was 101 on `20260904_1311` / `1224`; 113 on `20260904_0140` / 140 on `20260903_1744`; recovery shortlist is ops-only)
+- [x] Ranked listable / finally profitable post Band-A Browse keep: **152** (`20260904_1348`; was 149 on `20260904_1311`)
 - [x] `EBAY_DEMAND_FIRST` remains scaffold / provisional until official validation
 - [x] Drafts exist under `data/drafts/randmar_first/safe_nationwide/` (and
       `destination_sensitive/` only if intentionally included)
-- [x] Creative A/B metadata present (`ORIGINAL_SUPPLIER` on 296 survivors; AI_ENHANCED waves optional)
-- [x] Dry-run E2E (`dry-run-sku`) passes for sandbox Final 5 (Stage 0 pack **5/5 PASS**; see `data/reports/sandbox_pack_dry_runs_20260904.md`)
+- [x] Creative A/B metadata present (`ORIGINAL_SUPPLIER` on SAFE survivors; AI_ENHANCED waves optional)
+- [x] Dry-run E2E (`dry-run-sku`) passes for sandbox Final 5 v2.1 (**5/5 PASS**; see `data/reports/sandbox_pack_v2_dry_runs.md`) and first-wave 25 (**25/25 PASS**; see `data/reports/first_wave_25_dry_runs_20260904_1311.md`); historical v1: `sandbox_pack_dry_runs_20260904.md`
 
 ## 1. OAuth
 
 > **Status:** Sandbox **client-credentials** (Browse app token) works. Sell **user**
-> OAuth (authorization code → refresh token) is implemented in CLI — complete the
-> RuName + consent steps below. Do **not** flip any Sell/publish gates yet.
+> OAuth (authorization code → refresh token) **complete** for sandbox — refresh
+> token stored locally (mode 600). Do **not** flip any Sell/publish gates yet.
 > Secrets stay in env / `secrets/` (never commit).
 
 ### 1a. App credentials (client credentials — Browse)
@@ -73,12 +75,12 @@ firefinds ebay-oauth-exchange --code '<paste-code-here>'
 firefinds ebay-user-token-status  # presence only
 ```
 
-- [ ] RuName created in Sandbox and pasted as `EBAY_RUNAME` / `EBAY_REDIRECT_URI`
-- [ ] `firefinds ebay-oauth-url` prints an `auth.sandbox.ebay.com` authorize URL
-- [ ] Sandbox seller user consents; `ebay-oauth-exchange` stores refresh token (mode 600)
-- [ ] `ebay-user-token-status` shows `refresh_token_present: true`
-- [ ] Token refresh path verified without printing secrets
-- [ ] Gates still OFF: `LIVE_LISTINGS_ENABLED` / `EBAY_SANDBOX_PUBLISH_ENABLED` /
+- [x] RuName created in Sandbox and pasted as `EBAY_RUNAME` / `EBAY_REDIRECT_URI`
+- [x] `firefinds ebay-oauth-url` prints an `auth.sandbox.ebay.com` authorize URL
+- [x] Sandbox seller user consents; `ebay-oauth-exchange` stores refresh token (mode 600)
+- [x] `ebay-user-token-status` shows `refresh_token_present: true`
+- [x] Token refresh path verified without printing secrets
+- [x] Gates still OFF: `LIVE_LISTINGS_ENABLED` / `EBAY_SANDBOX_PUBLISH_ENABLED` /
       `EBAY_PRODUCTION_ENABLED` / `SUPPLIER_ORDERS_ENABLED` = false
 
 **Exit criteria:** official Browse competition no longer needs
@@ -88,15 +90,26 @@ user refresh token present for upcoming sandbox Sell inventory/offer work
 
 ## 2. Sandbox / API validation
 
-- [ ] Inventory API create/update inventory item against **sandbox** only
-- [ ] Offer create/update against sandbox only
+> **Gate split (2026-09-04):** Sandbox **inventory + offer** writes are allowed when
+> `EBAY_ENV=sandbox` and a user refresh token is present — **without**
+> `LIVE_LISTINGS_ENABLED`. Publish stays refused unless
+> `EBAY_SANDBOX_PUBLISH_ENABLED=true`. Production Sell remains behind
+> `EBAY_PRODUCTION_ENABLED` + `LIVE_LISTINGS_ENABLED`.
+>
+> **CLI:** `firefinds ebay-sandbox-inventory-offer-e2e` (Final 5 v2.1 drafts under
+> `data/drafts/randmar_first/safe_nationwide/final5_v2_original/`). Optional overrides:
+> `EBAY_FULFILLMENT_POLICY_ID`, `EBAY_PAYMENT_POLICY_ID`, `EBAY_RETURN_POLICY_ID`,
+> `EBAY_CATEGORY_ID`. Reports: `data/reports/sandbox_inventory_offer_e2e_<ts>.{json,md}`.
+
+- [x] Inventory API create/update inventory item against **sandbox** only (client + E2E; see latest report)
+- [ ] Offer create/update against sandbox only — **blocked** until Business Policies / seller registration eligible (fulfillment policies previously returned HTTP 400 “User is not eligible for Business Policy”; `sellerRegistrationCompleted:false` on privilege probe)
 - [ ] Policy IDs (fulfillment / payment / return) resolved for sandbox
-- [ ] MAP floor + stock buffer + shipping RESOLVED re-checked in backend gates
-- [ ] Publish stub still refused while `EBAY_SANDBOX_PUBLISH_ENABLED=false`
+- [x] MAP floor + stock buffer + shipping RESOLVED re-checked in backend gates (dry-runs 5/5)
+- [x] Publish refused while `EBAY_SANDBOX_PUBLISH_ENABLED=false` (E2E asserts `EbayPublishDisabled`)
 - [ ] Flip `EBAY_SANDBOX_PUBLISH_ENABLED=true` **only** for a named sandbox SKU set
 - [ ] Sandbox publish → verify listing shape → unpublish / clean up
 - [ ] Re-set `EBAY_SANDBOX_PUBLISH_ENABLED=false` after validation
-- [ ] No supplier Process / orders during this stage
+- [x] No supplier Process / orders during this stage
 
 **Exit criteria:** sandbox publish/unpublish succeeds for ≥1 SAFE_NATIONWIDE draft;
 gates restored OFF; action log shows no production Sell calls.
@@ -148,6 +161,11 @@ not left permanently ON by accident.
 
 - [`AI_ORG.md`](AI_ORG.md) — roles, match classes, creative A/B, escalation
 - Root `README.md` — feature gates, dual pipelines, CLI
+- [`STAGE2_WAVE_SIZING_PLAYBOOK.md`](STAGE2_WAVE_SIZING_PLAYBOOK.md) — Final 5 → 10 → 25 (blocked until RuName → sandbox §2 → Clay)
+- Fee readiness: `data/reports/ebay_ca_fee_model_149_book.md` · Store trigger: `data/reports/stage2_store_trigger_memo.md`
+- Pack v2.1: [`SANDBOX_PILOT_PACK_v2.md`](SANDBOX_PILOT_PACK_v2.md) · dry-runs `data/reports/sandbox_pack_v2_dry_runs.md`
+- First-wave 25 dry-runs (**25/25 PASS**): `data/reports/first_wave_25_dry_runs_20260904_1311.md`
+- Cohort pointer: `data/reports/cohort_refresh_latest.md` (`20260904_1348`)
 - CLI: `ebay-oauth-url`, `ebay-oauth-exchange`, `ebay-user-token-status`,
-  `split-cohorts`, `authorize-drafts`, `batch-creative-drafts`,
-  `ebay-demand-ingest`, `dry-run-sku`, `health`
+  `ebay-sandbox-inventory-offer-e2e`, `split-cohorts`, `authorize-drafts`,
+  `batch-creative-drafts`, `ebay-demand-ingest`, `dry-run-sku`, `health`
