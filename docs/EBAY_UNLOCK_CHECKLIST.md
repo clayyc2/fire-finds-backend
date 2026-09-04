@@ -1,5 +1,9 @@
 # eBay unlock checklist
 
+> **Current stage (2026-09-04):** **Stage 0 ready** — RANDMAR_FIRST cohorts frozen (`20260903_1744`), SAFE_NATIONWIDE drafts + ORIGINAL_SUPPLIER creative present, quarantine excluded from live waves, gates **OFF**.  
+> **Blocked on:** eBay **developer application approval** → then §1 OAuth (client + user/refresh token). No sandbox publish until OAuth lands.  
+> Health: `ebay_credentials: false`; Browse competition stays provisional (`needs_official_ebay_validation`).
+
 Gates stay **OFF** until each stage below is explicitly completed and human-approved.
 Default: `LIVE_LISTINGS_ENABLED=false`, `EBAY_SANDBOX_PUBLISH_ENABLED=false`,
 `EBAY_PRODUCTION_ENABLED=false`, `SUPPLIER_ORDERS_ENABLED=false`.
@@ -9,16 +13,18 @@ separate unlock and is out of scope here.
 
 ## 0. Preconditions (ready-to-list backlog)
 
-- [ ] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized
-- [ ] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave)
-- [ ] `QUARANTINE_UNRESOLVED` excluded from any live wave
-- [ ] `EBAY_DEMAND_FIRST` remains scaffold / provisional until official validation
-- [ ] Drafts exist under `data/drafts/randmar_first/safe_nationwide/` (and
+- [x] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized (`20260903_1744`, 254 SKUs)
+- [x] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave) (42 SKUs)
+- [x] `QUARANTINE_UNRESOLVED` excluded from any live wave (140 SKUs; recovery shortlist is ops-only)
+- [x] `EBAY_DEMAND_FIRST` remains scaffold / provisional until official validation
+- [x] Drafts exist under `data/drafts/randmar_first/safe_nationwide/` (and
       `destination_sensitive/` only if intentionally included)
-- [ ] Creative A/B metadata present (`ORIGINAL_SUPPLIER` / `AI_ENHANCED`) on SKU records
+- [x] Creative A/B metadata present (`ORIGINAL_SUPPLIER` on 296 survivors; AI_ENHANCED waves optional)
 - [ ] Dry-run E2E (`dry-run-sku`) passes for sample SAFE_NATIONWIDE SKUs
 
 ## 1. OAuth
+
+> **Waiting here:** developer approval pending. Do not flip any Sell/publish gates. Secrets stay in env / `secrets/` (never commit).
 
 - [ ] eBay developer application approved for the needed scopes
 - [ ] `EBAY_CLIENT_ID` set in env
