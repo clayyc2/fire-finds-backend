@@ -20,7 +20,7 @@ Sign in everywhere as Sandbox seller **`TESTUSER_shopfirefindsnow`** (password f
 ### A. Complete seller registration (`sellerRegistrationCompleted → true`)
 
 1. Open [https://www.sandbox.ebay.com/](https://www.sandbox.ebay.com/) and sign in as `TESTUSER_shopfirefindsnow`.
-2. Start / finish the **Sell** registration flow (Seller Hub “Start selling” / account registration prompts until the account is a registered seller on Sandbox).  
+2. Open **[https://www.sandbox.ebay.com/sl/sell](https://www.sandbox.ebay.com/sl/sell)** and finish the **Sell** registration / “Start selling” flow until the account is a registered Sandbox seller.  
    - Official meaning of the flag: Account API `getPrivileges` → `sellerRegistrationCompleted` is true only when eBay considers seller registration complete ([SellingPrivileges](https://developer.ebay.com/api-docs/sell/account/types/api:SellingPrivileges)).
 3. Ping Mr. Krabs (or re-run privilege check) — we verify with:
    ```bash
@@ -31,11 +31,16 @@ Sign in everywhere as Sandbox seller **`TESTUSER_shopfirefindsnow`** (password f
 
 ### B. Opt into Business Policies (eligibility)
 
-4. While signed in as the same Sandbox seller, open the Sandbox Business Policies opt-in page:  
-   **[https://www.bizpolicy.sandbox.ebay.com/businesspolicy/policyoptin](https://www.bizpolicy.sandbox.ebay.com/businesspolicy/policyoptin)**  
-   (Alternate host seen in guides: `http://www.bizpolicy.sandbox.ebay.com/businesspolicy/policyoptin`.)
-5. Click **Try Out** / **Get Started** / **Opt in** (wording varies) and accept until Business Policies is enabled for the account.  
-   - Until this succeeds, Account API policy GETs return *User is not eligible for Business Policy*.
+4. Prefer Sandbox Sell UI (verified 2026-09-04):  
+   - Sell hub: **[https://www.sandbox.ebay.com/sl/sell](https://www.sandbox.ebay.com/sl/sell)**  
+   - List/prelist: [https://www.sandbox.ebay.com/sl/prelist/suggest](https://www.sandbox.ebay.com/sl/prelist/suggest)  
+   - Dev Sandbox get-started: [https://developer.ebay.com/develop/get-started/sandbox](https://developer.ebay.com/develop/get-started/sandbox)  
+   - Test-user registration (needs Clay sign-in): [https://developer.ebay.com/sandbox/register](https://developer.ebay.com/sandbox/register)
+5. After seller registration, opt into / create **Business Policies** from Sandbox Account settings (wording: Try Out / Get Started / Opt in).  
+   - **Do not rely on** `bizpolicy.sandbox.ebay.com` — that host **failed DNS** from our probe (2026-09-04). Older blog links pointing there are stale.  
+   - Sandbox “Seller Hub / Seller Center” marketing pages often **redirect to production** `ebay.com/sellercenter` — stay on `sandbox.ebay.com` hosts only.  
+   - Until Business Policies is enabled, Account API policy GETs return *User is not eligible for Business Policy*.  
+   - Fallback once registration is complete: create payment/return/fulfillment policies via [API Explorer](https://developer.ebay.com/my/api_test_tool) against **Sandbox** with the user token (still no fabricated IDs).
 
 ### C. Create the three policies (EBAY_CA) and copy real IDs
 
@@ -71,5 +76,5 @@ Sign in everywhere as Sandbox seller **`TESTUSER_shopfirefindsnow`** (password f
 
 - Account API privileges / `sellerRegistrationCompleted` field definition  
 - Sandbox listing prerequisites (policies + inventory + offer): community guidance summarizing Inventory API flow  
-- Business Policies Sandbox opt-in URL: `bizpolicy.sandbox.ebay.com/businesspolicy/policyoptin`
+- Sandbox Sell UI: `sandbox.ebay.com/sl/sell` (verified). Legacy `bizpolicy.sandbox.ebay.com` opt-in host failed DNS 2026-09-04.
 
