@@ -12,12 +12,14 @@ Full draft (gitignored under `data/`):
 
 ## Cohort snapshot migration
 
-- **Live / current freeze:** `20260904_0140` — SAFE **275** / DEST **46** / QUARANTINE **113** (ranked finally-profitable **321**).
-- **Prior freeze (superseded for live ops):** `20260903_1744` — SAFE 254 / DEST 42 / QUARANTINE 140 (stale vs DB after quarantine requote + validate).
+- **Live / current freeze:** `20260904_1224` — SAFE **289** / DEST **46** / QUARANTINE **101** (ranked finally-profitable **335**).
+- **Prior freeze (superseded for live ops):** `20260904_0140` — SAFE 275 / DEST 46 / QUARANTINE 113 (stale after wave-2 requote + validate).
+- Earlier: `20260903_1744` — SAFE 254 / DEST 42 / QUARANTINE 140.
 - Refresh evidence: `data/reports/cohort_refresh_latest.md`.
-- Final 5 pilot SKUs below remain in SAFE on `20260904_0140`; dry-run artifacts were produced under the prior snapshot id.
+- Final 5 pilot SKUs below remain in SAFE on `20260904_1224`; Stage 0 dry-run pack **5/5 PASS**; **OAuth still blocked**.
+- Dry-run artifacts were produced under earlier snapshot ids (`20260903_1744` / `20260904_0140`).
 
-## Final 5 SKUs (`SAFE_NATIONWIDE` / originally snapshot `20260903_1744`; still SAFE on `20260904_0140`)
+## Final 5 SKUs (`SAFE_NATIONWIDE` / originally `20260903_1744`; still SAFE on `20260904_1224`)
 
 | # | SKU | Dry-run | Artifact |
 |--:|-----|:-------:|----------|
