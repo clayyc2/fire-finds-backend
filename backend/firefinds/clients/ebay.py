@@ -112,7 +112,28 @@ class EbayClient:
             return None
         return text or None
 
-    def _load_credentials(self) -> tuple[str | None, str | None]:
+    def _load_credentials(
+        self, *, for_browse: bool = False
+    ) -> tuple[str | None, str | None]:
+        """Load App ID + Cert. Prefer Production files for Browse when enabled."""
+        secrets_dir = self.settings.secrets_dir
+        use_prod_browse = bool(
+            for_browse and self.settings.ebay_browse_use_production
+        )
+        if use_prod_browse:
+            client_id = (
+                os.environ.get("EBAY_CLIENT_ID_PRODUCTION")
+                or self._read_secret_file(secrets_dir / "ebay_client_id_production.txt")
+            )
+            client_secret = os.environ.get("EBAY_CLIENT_SECRET_PRODUCTION")
+            if not client_secret:
+                client_secret = self._read_secret_file(
+                    secrets_dir / "ebay_client_secret_production.txt"
+                )
+            if client_id and client_secret:
+                return client_id.strip() or None, client_secret
+            # fall through to default pair if production files missing
+
         client_id = (
             os.environ.get("EBAY_CLIENT_ID")
             or self.settings.ebay_client_id
@@ -133,9 +154,9 @@ class EbayClient:
             if secret_file:
                 client_secret = self._read_secret_file(Path(secret_file))
         if not client_secret:
-            secrets_dir = self.settings.secrets_dir
             for name in (
                 "ebay_client_secret.txt",
+                "ebay_client_secret_sandbox.txt",
                 "ebay_cert_id.txt",
                 "EBAY_CLIENT_SECRET",
             ):
@@ -181,7 +202,7 @@ class EbayClient:
     def fetch_app_token(self, *, for_browse: bool = True) -> str:
         """OAuth2 client-credentials application token. Never logs secrets."""
         self.require_credentials()
-        client_id, client_secret = self._load_credentials()
+        client_id, client_secret = self._load_credentials(for_browse=for_browse)
         assert client_id and client_secret
 
         basic = base64.b64encode(
