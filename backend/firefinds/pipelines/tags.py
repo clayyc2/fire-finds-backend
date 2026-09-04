@@ -20,6 +20,10 @@ AB_METRIC_KEYS = (
     "contribution_profit_realized",
     "cancellations",
     "returns",
+    "impressions",
+    "ctr",
+    "conversion_rate",
+    "sales_units",
 )
 
 

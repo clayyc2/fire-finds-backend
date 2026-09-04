@@ -116,6 +116,9 @@ PYTHONPATH=. python -m firefinds.cli.main split-cohorts --snapshot-id YYYYMMDD_H
 PYTHONPATH=. python -m firefinds.cli.main authorize-drafts --snapshot-id YYYYMMDD_HHMM
 PYTHONPATH=. python -m firefinds.cli.main ebay-demand-discover --snapshot-id YYYYMMDD_HHMM
 PYTHONPATH=. python -m firefinds.cli.main pipeline-freeze-split-draft
+PYTHONPATH=. python -m firefinds.cli.main sku-record upsert-metrics --sku SKU --pipeline-source RANDMAR_FIRST --match-confidence A_EXACT
+PYTHONPATH=. python -m firefinds.cli.main sku-record export-learning [--comparison-cohort-id ID]
+PYTHONPATH=. python -m firefinds.cli.main dry-run-sku [--sku SKU] [--snapshot-id YYYYMMDD_HHMM]
 ```
 
 `--inject-ship CAD` is **test-only** to inject a resolved shipping cost. Production
@@ -142,8 +145,10 @@ Cohorts: `SAFE_NATIONWIDE` (finally profitable, not destination-sensitive),
 `QUARANTINE_UNRESOLVED` (unresolved shipping — never sellable).
 
 Every candidate row carries `pipeline_source`, `cohort`, `comparison_cohort_id`,
-and empty A/B metric columns (`sell_through`, `time_to_first_sale`,
-`contribution_profit_realized`, `cancellations`, `returns`) for later comparison.
+and empty marketplace metric columns (`impressions`, `ctr`, `conversion_rate`,
+`sales_units`, `sell_through`, `time_to_first_sale`,
+`contribution_profit_realized`, `cancellations`, `returns`) plus creative
+fields for later learning comparison (`sku-record export-learning`).
 
 `EBAY_DEMAND_FIRST` is scaffolded with provisional public flags until official
 eBay OAuth keys arrive (`EBAY_SELLING_LIMIT` is a soft placeholder only).

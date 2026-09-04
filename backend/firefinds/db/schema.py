@@ -1,4 +1,4 @@
-"""SQLite schema for products, competition, ranked queue, and action log."""
+"""SQLite schema for products (incl. measurable outcomes), competition, ranked queue, and action log."""
 
 from __future__ import annotations
 
@@ -170,6 +170,14 @@ CREATE TABLE IF NOT EXISTS candidate_cohorts (
     contribution_profit_realized REAL,
     cancellations INTEGER,
     returns INTEGER,
+    impressions REAL,
+    ctr REAL,
+    conversion_rate REAL,
+    sales_units REAL,
+    match_confidence TEXT,
+    creative_version_id TEXT,
+    creative_variant TEXT,
+    ab_assignment TEXT,
     detail_json TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (sku, pipeline_source, snapshot_id)
@@ -265,7 +273,27 @@ PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("map_ok", "INTEGER"),
     ("channel_ok", "INTEGER"),
     ("needs_manual_channel_review", "INTEGER"),
+    # Shared measurable outcomes (research / creative / marketplace / learning)
+    ("match_confidence", "TEXT"),
+    ("demand_evidence_refs", "TEXT"),
+    ("competition_snapshot_flags", "TEXT"),
+    ("creative_version_id", "TEXT"),
+    ("creative_variant", "TEXT"),
+    ("asset_paths", "TEXT"),
+    ("ab_assignment", "TEXT"),
+    ("impressions", "REAL"),
+    ("ctr", "REAL"),
+    ("conversion_rate", "REAL"),
+    ("sales_units", "REAL"),
+    ("contribution_profit_realized", "REAL"),
+    ("cancellations", "INTEGER"),
+    ("returns", "INTEGER"),
+    ("time_to_first_sale", "REAL"),
+    ("sell_through", "REAL"),
+    ("listing_status", "TEXT"),
+    ("order_status", "TEXT"),
 ]
+
 
 RANKED_QUEUE_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("ship_p75", "REAL"),
@@ -275,6 +303,17 @@ RANKED_QUEUE_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("pipeline_source", "TEXT"),
     ("cohort", "TEXT"),
     ("comparison_cohort_id", "TEXT"),
+]
+
+CANDIDATE_COHORTS_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
+    ("impressions", "REAL"),
+    ("ctr", "REAL"),
+    ("conversion_rate", "REAL"),
+    ("sales_units", "REAL"),
+    ("match_confidence", "TEXT"),
+    ("creative_version_id", "TEXT"),
+    ("creative_variant", "TEXT"),
+    ("ab_assignment", "TEXT"),
 ]
 
 
@@ -322,6 +361,12 @@ def migrate_schema(conn: sqlite3.Connection) -> list[str]:
     for name, decl in RANKED_QUEUE_COLUMN_MIGRATIONS:
         if name not in rq_cols:
             ddl = f"ALTER TABLE ranked_queue ADD COLUMN {name} {decl}"
+            conn.execute(ddl)
+            applied.append(ddl)
+    cc_cols = _existing_columns(conn, "candidate_cohorts")
+    for name, decl in CANDIDATE_COHORTS_COLUMN_MIGRATIONS:
+        if name not in cc_cols:
+            ddl = f"ALTER TABLE candidate_cohorts ADD COLUMN {name} {decl}"
             conn.execute(ddl)
             applied.append(ddl)
     for ddl in INDEXES_DDL:

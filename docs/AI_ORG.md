@@ -27,6 +27,23 @@ parallel source of truth.
   `EBAY_SANDBOX_PUBLISH_ENABLED`, `SUPPLIER_ORDERS_ENABLED`,
   `EBAY_PRODUCTION_ENABLED`) are refused — AI cannot flip those flags.
 
+## Shared SKU measurable outcomes
+
+Every department writes into the shared `products` SKU record (CLI:
+`sku-record upsert-metrics` / `sku-record export-learning`):
+
+| Area | Fields |
+|------|--------|
+| **Research** | `pipeline_source` (`RANDMAR_FIRST` \| `EBAY_DEMAND_FIRST`), `match_confidence` (`A_EXACT` \| `B_VARIANT` \| `C_SUBSTITUTE`), `demand_evidence_refs`, `competition_snapshot_flags` |
+| **Creative** | `creative_version_id`, `creative_variant` (`ORIGINAL_SUPPLIER` \| `AI_ENHANCED`), `asset_paths`, `ab_assignment` |
+| **Marketplace** (nullable until live) | `impressions`, `ctr`, `conversion_rate`, `sales_units`, `contribution_profit_realized`, `cancellations`, `returns`, `time_to_first_sale`, `sell_through` |
+| **Learning** | `comparison_cohort_id` linking pipeline + creative A/B for later analysis |
+
+Dry-run E2E (`dry-run-sku`) simulates research → creative → backend gates →
+`SIMULATED_LISTED` → `SIMULATED_ORDER` → ops tracking / pause-on-gate-fail
+**without** live eBay publish or Randmar Process. Reports land under
+`data/dry_runs/`.
+
 ## Pipelines
 
 | Tag | Flow |
@@ -65,10 +82,11 @@ draft SKU:
 | **B — AI-enhanced** | AI-improved thumbs / lighting / crop / listing copy; same SKU identity and facts |
 
 A/B is for **draft comparison and later sell-through metrics only**. Neither arm
-is published while listings gates are OFF. Metric columns
-(`sell_through`, `time_to_first_sale`, `contribution_profit_realized`,
-`cancellations`, `returns`) stay empty until live comparison is explicitly
-authorized.
+is published while listings gates are OFF. Marketplace metric columns on the shared SKU record
+(`impressions`, `ctr`, `conversion_rate`, `sales_units`, `sell_through`,
+`time_to_first_sale`, `contribution_profit_realized`, `cancellations`,
+`returns`) stay empty until live comparison is explicitly authorized.
+`comparison_cohort_id` links pipeline and creative A/B arms for learning export.
 
 ## Safety (hard)
 

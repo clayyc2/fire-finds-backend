@@ -26,6 +26,12 @@ from firefinds.pipelines.snapshot import freeze_shipping_snapshot, snapshot_stam
 from firefinds.pipelines.cohorts import split_randmar_cohorts
 from firefinds.pipelines.authorize import authorize_and_draft_survivors
 from firefinds.discovery.ebay_demand import discover_ebay_demand_first
+from firefinds.sku_record.metrics import (
+    export_learning_comparison,
+    get_sku_record,
+    upsert_sku_metrics,
+)
+from firefinds.sku_record.dry_run import run_dry_run_sku
 
 
 def cmd_ingest_stub(_args: argparse.Namespace) -> int:
@@ -265,6 +271,103 @@ def cmd_pipeline_freeze_split_draft(args: argparse.Namespace) -> int:
 
 
 
+
+def cmd_sku_record(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    if args.sku_command == "upsert-metrics":
+        metrics: dict = {}
+        if args.pipeline_source:
+            metrics["pipeline_source"] = args.pipeline_source
+        if args.match_confidence:
+            metrics["match_confidence"] = args.match_confidence
+        if args.creative_version_id:
+            metrics["creative_version_id"] = args.creative_version_id
+        if args.creative_variant:
+            metrics["creative_variant"] = args.creative_variant
+        if args.ab_assignment:
+            metrics["ab_assignment"] = args.ab_assignment
+        if args.comparison_cohort_id:
+            metrics["comparison_cohort_id"] = args.comparison_cohort_id
+        if args.demand_evidence_refs:
+            metrics["demand_evidence_refs"] = json.loads(args.demand_evidence_refs)
+        if args.competition_snapshot_flags:
+            metrics["competition_snapshot_flags"] = json.loads(
+                args.competition_snapshot_flags
+            )
+        if args.asset_paths:
+            metrics["asset_paths"] = json.loads(args.asset_paths)
+        if args.metrics_json:
+            metrics.update(json.loads(args.metrics_json))
+        # Nullable marketplace numerics
+        for key in (
+            "impressions",
+            "ctr",
+            "conversion_rate",
+            "sales_units",
+            "contribution_profit_realized",
+            "cancellations",
+            "returns",
+            "time_to_first_sale",
+            "sell_through",
+        ):
+            val = getattr(args, key, None)
+            if val is not None:
+                metrics[key] = val
+        record = upsert_sku_metrics(
+            args.sku, metrics, settings=settings, source="cli.sku-record"
+        )
+        print(json.dumps(record["metrics"], indent=2, default=str))
+        return 0
+    if args.sku_command == "get":
+        record = get_sku_record(args.sku, settings=settings)
+        print(json.dumps(record, indent=2, default=str))
+        return 0
+    if args.sku_command == "export-learning":
+        out = args.output
+        if out is None:
+            out = str(
+                Path(settings.db_path).parent
+                / "learning_exports"
+                / "comparison.json"
+            )
+        payload = export_learning_comparison(
+            settings=settings,
+            comparison_cohort_id=args.comparison_cohort_id,
+            pipeline_source=args.pipeline_source,
+            limit=args.limit,
+            export_path=out,
+        )
+        print(json.dumps({"count": payload["count"], "export_path": payload.get("export_path")}, indent=2))
+        return 0
+    print(f"unknown sku-record subcommand: {args.sku_command}", file=sys.stderr)
+    return 2
+
+
+def cmd_dry_run_sku(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        report = run_dry_run_sku(
+            sku=args.sku,
+            settings=settings,
+            snapshot_id=args.snapshot_id,
+            include_ai_twin=not args.no_ai_twin,
+        )
+    except (RuntimeError, ValueError, KeyError) as exc:
+        print(f"dry-run-sku failed: {exc}", file=sys.stderr)
+        return 2
+    # Compact stdout summary + path
+    summary = {
+        "sku": report["sku"],
+        "report_path": report.get("report_path"),
+        "gate_pass": report["backend_gates"]["pass"],
+        "listing_status": report.get("listing_status"),
+        "order_status": report.get("order_status"),
+        "stages": [s["stage"] for s in report["stages"]],
+    }
+    print(json.dumps(summary, indent=2, default=str))
+    return 0 if report["backend_gates"]["pass"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="firefinds",
@@ -455,6 +558,72 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_pipe.add_argument("--snapshot-id", default=None)
     p_pipe.set_defaults(func=cmd_pipeline_freeze_split_draft)
+
+    p_sku = sub.add_parser(
+        "sku-record",
+        help="Shared SKU measurable outcomes (upsert-metrics / get / export-learning)",
+    )
+    sku_sub = p_sku.add_subparsers(dest="sku_command", required=True)
+
+    p_up = sku_sub.add_parser(
+        "upsert-metrics", help="Write research/creative/marketplace/learning fields"
+    )
+    p_up.add_argument("--sku", required=True)
+    p_up.add_argument("--pipeline-source", choices=["RANDMAR_FIRST", "EBAY_DEMAND_FIRST"])
+    p_up.add_argument(
+        "--match-confidence", choices=["A_EXACT", "B_VARIANT", "C_SUBSTITUTE"]
+    )
+    p_up.add_argument("--creative-version-id")
+    p_up.add_argument(
+        "--creative-variant", choices=["ORIGINAL_SUPPLIER", "AI_ENHANCED"]
+    )
+    p_up.add_argument("--ab-assignment")
+    p_up.add_argument("--comparison-cohort-id")
+    p_up.add_argument("--demand-evidence-refs", help="JSON list/object")
+    p_up.add_argument("--competition-snapshot-flags", help="JSON object")
+    p_up.add_argument("--asset-paths", help="JSON list of paths")
+    p_up.add_argument("--metrics-json", help="JSON object of extra allowed keys")
+    p_up.add_argument("--impressions", type=float, default=None)
+    p_up.add_argument("--ctr", type=float, default=None)
+    p_up.add_argument("--conversion-rate", type=float, default=None)
+    p_up.add_argument("--sales-units", type=float, default=None)
+    p_up.add_argument("--contribution-profit-realized", type=float, default=None)
+    p_up.add_argument("--cancellations", type=int, default=None)
+    p_up.add_argument("--returns", type=int, default=None)
+    p_up.add_argument("--time-to-first-sale", type=float, default=None)
+    p_up.add_argument("--sell-through", type=float, default=None)
+    p_up.set_defaults(func=cmd_sku_record)
+
+    p_get = sku_sub.add_parser("get", help="Show SKU record + measurable outcomes")
+    p_get.add_argument("--sku", required=True)
+    p_get.set_defaults(func=cmd_sku_record)
+
+    p_exp = sku_sub.add_parser(
+        "export-learning",
+        help="Export measurable outcomes for pipeline/creative A/B learning",
+    )
+    p_exp.add_argument("--comparison-cohort-id", default=None)
+    p_exp.add_argument("--pipeline-source", default=None)
+    p_exp.add_argument("--limit", type=int, default=None)
+    p_exp.add_argument("--output", default=None, help="JSON export path")
+    p_exp.set_defaults(func=cmd_sku_record)
+
+    p_dry = sub.add_parser(
+        "dry-run-sku",
+        help="Simulate full SKU E2E (research→creative→gates→SIMULATED listing/order)",
+    )
+    p_dry.add_argument(
+        "--sku",
+        default=None,
+        help="SKU to dry-run (default: top SAFE_NATIONWIDE RESOLVED from snapshot)",
+    )
+    p_dry.add_argument("--snapshot-id", default="20260903_1744")
+    p_dry.add_argument(
+        "--no-ai-twin",
+        action="store_true",
+        help="Skip stub AI_ENHANCED creative twin",
+    )
+    p_dry.set_defaults(func=cmd_dry_run_sku)
 
     return parser
 
