@@ -319,6 +319,24 @@ PRODUCT_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("images_fetched_at", "TEXT"),
     ("supplier_image_urls", "TEXT"),
     ("supplier_image_local_paths", "TEXT"),
+    # Ops exception unlock fields (deterministic rules; publish/orders stay gated OFF)
+    ("last_known_cost", "REAL"),
+    ("tracking_number", "TEXT"),
+    ("ordered_at", "TEXT"),
+    ("hours_since_order", "REAL"),
+    ("ship_status", "TEXT"),
+    ("active_offer_count", "INTEGER"),
+    ("ebay_item_ids", "TEXT"),
+    ("listing_validation_ok", "INTEGER"),
+    ("missing_specifics", "TEXT"),
+    ("identity_mismatch", "INTEGER"),
+    ("cs_open", "INTEGER"),
+    ("cs_open_hours", "REAL"),
+    ("cs_opened_at", "TEXT"),
+    ("account_defect_rate", "REAL"),
+    ("policy_strike", "INTEGER"),
+    ("selling_limit_hit", "INTEGER"),
+    ("cancel_fault", "TEXT"),
 ]
 
 

@@ -26,12 +26,35 @@ RULE_MARGIN_BELOW_MIN = "MARGIN_BELOW_MIN"
 RULE_MAP_BREACH = "MAP_BREACH"
 RULE_CHANNEL_AUTH_FAIL = "CHANNEL_AUTH_FAIL"
 RULE_API_INGEST_FAILURE_STREAK = "API_INGEST_FAILURE_STREAK"
+RULE_COST_SPIKE = "COST_SPIKE"
+RULE_RETURNS_RATE_HIGH = "RETURNS_RATE_HIGH"
+RULE_CANCELLATION_RATE_HIGH = "CANCELLATION_RATE_HIGH"
+RULE_CS_EXCEPTION_OPEN = "CS_EXCEPTION_OPEN"
+RULE_ACCOUNT_HEALTH_RISK = "ACCOUNT_HEALTH_RISK"
+RULE_TRACKING_MISSING = "TRACKING_MISSING"
+RULE_FULFILLMENT_LATE = "FULFILLMENT_LATE"
+RULE_DUPLICATE_LISTING = "DUPLICATE_LISTING"
+RULE_INVALID_LISTING = "INVALID_LISTING"
 
 SEVERITY_PAUSE = "pause"
 SEVERITY_FLAG = "flag"
 
 DEFAULT_INGEST_STREAK_THRESHOLD = 3
 GLOBAL_INGEST_SKU = "__INGEST__"
+GLOBAL_ACCOUNT_SKU = "__ACCOUNT__"
+
+# Unlock / CS / fulfillment thresholds (deterministic; gates stay OFF).
+DEFAULT_COST_SPIKE_PCT = 0.10
+DEFAULT_RETURNS_RATE_MAX = 0.08
+DEFAULT_CANCELLATIONS_RATE_MAX = 0.05
+DEFAULT_RETURNS_MIN_SALES = 5
+DEFAULT_CANCEL_MIN_N = 5
+DEFAULT_CS_OPEN_HOURS = 24.0
+DEFAULT_ACCOUNT_DEFECT_RATE_MAX = 0.02
+DEFAULT_TRACKING_HOURS_MAX = 48.0
+DEFAULT_FULFILLMENT_HOURS_MAX = 72.0
+DEFAULT_DUPLICATE_ACTIVE_MAX = 1
+TRACKING_ORDER_STATUSES = frozenset({"SIMULATED_ORDER", "AWAITING_SHIP"})
 
 
 def _utc_now() -> str:
@@ -66,6 +89,77 @@ def _truthy_int(value: Any) -> bool | None:
         return int(value) == 1
     except (TypeError, ValueError):
         return bool(value)
+
+
+def _detail_map(row: Mapping[str, Any]) -> dict[str, Any]:
+    raw = row.get("detail_json", row.get("detail"))
+    if raw is None:
+        return {}
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    return {}
+
+
+def _flatten_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Merge detail_json keys under top-level (top-level wins when set)."""
+    out = dict(row)
+    for key, value in _detail_map(row).items():
+        if out.get(key) is None:
+            out[key] = value
+    return out
+
+
+def _get(row: Mapping[str, Any], key: str, default: Any = None) -> Any:
+    if row.get(key) is not None:
+        return row.get(key)
+    return _detail_map(row).get(key, default)
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _hours_since_order(row: Mapping[str, Any]) -> float | None:
+    pre = _f(_get(row, "hours_since_order"))
+    if pre is not None:
+        return pre
+    ordered = _parse_dt(_get(row, "ordered_at"))
+    if ordered is None:
+        return None
+    now = datetime.now(timezone.utc)
+    return max(0.0, (now - ordered).total_seconds() / 3600.0)
+
+
+def _tracking_empty(row: Mapping[str, Any]) -> bool:
+    tracking = _get(row, "tracking_number")
+    if tracking is None:
+        return True
+    return str(tracking).strip() == ""
 
 
 @dataclass(frozen=True)
@@ -212,6 +306,248 @@ def _eval_channel_auth(row: Mapping[str, Any], settings: Settings) -> RuleHit | 
     )
 
 
+def _eval_cost_spike(row: Mapping[str, Any], settings: Settings) -> RuleHit | None:
+    last = _f(_get(row, "last_known_cost"))
+    curr = _f(_get(row, "dealer_cost"))
+    if curr is None:
+        curr = _f(_get(row, "net_cost"))
+    if last is None or last <= 0 or curr is None:
+        return None
+    spike = (curr - last) / last
+    if spike + 1e-12 >= DEFAULT_COST_SPIKE_PCT:
+        pct = spike * 100.0
+        return RuleHit(
+            RULE_COST_SPIKE,
+            SEVERITY_PAUSE,
+            f"cost spike {pct:.1f}%",
+            {
+                "dealer_cost": curr,
+                "last_known_cost": last,
+                "cost_spike_pct": spike,
+                "threshold": DEFAULT_COST_SPIKE_PCT,
+            },
+        )
+    return None
+
+
+def _eval_returns_rate(row: Mapping[str, Any], settings: Settings) -> RuleHit | None:
+    returns = _i(_get(row, "returns"), 0) or 0
+    sales = _f(_get(row, "sales_units"), 0.0) or 0.0
+    if sales < DEFAULT_RETURNS_MIN_SALES:
+        return None
+    rate = returns / max(sales, 1.0)
+    if rate > DEFAULT_RETURNS_RATE_MAX:
+        return RuleHit(
+            RULE_RETURNS_RATE_HIGH,
+            SEVERITY_PAUSE,
+            f"returns rate {rate * 100.0:.1f}%",
+            {
+                "returns": returns,
+                "sales_units": sales,
+                "returns_rate": rate,
+                "threshold": DEFAULT_RETURNS_RATE_MAX,
+            },
+        )
+    return None
+
+
+def _eval_cancellation_rate(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    cancels = _i(_get(row, "cancellations"), 0) or 0
+    sales = _f(_get(row, "sales_units"), 0.0) or 0.0
+    n = sales + cancels
+    if n < DEFAULT_CANCEL_MIN_N:
+        return None
+    rate = cancels / max(n, 1.0)
+    if rate <= DEFAULT_CANCELLATIONS_RATE_MAX:
+        return None
+    cancel_fault = _get(row, "cancel_fault")
+    severity = SEVERITY_PAUSE
+    if cancel_fault is not None and str(cancel_fault).strip().lower() not in {
+        "",
+        "seller",
+    }:
+        # Non-seller fault: flag only (seller-fault or unset → pause).
+        severity = SEVERITY_FLAG
+    return RuleHit(
+        RULE_CANCELLATION_RATE_HIGH,
+        severity,
+        f"cancel rate {rate * 100.0:.1f}%",
+        {
+            "cancellations": cancels,
+            "sales_units": sales,
+            "cancellation_rate": rate,
+            "threshold": DEFAULT_CANCELLATIONS_RATE_MAX,
+            "cancel_fault": cancel_fault,
+        },
+    )
+
+
+def _eval_cs_exception_open(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    cs_open = _truthy_int(_get(row, "cs_open"))
+    hours = _f(_get(row, "cs_open_hours"))
+    if hours is None:
+        opened = _parse_dt(_get(row, "cs_opened_at"))
+        if opened is not None:
+            hours = max(
+                0.0,
+                (datetime.now(timezone.utc) - opened).total_seconds() / 3600.0,
+            )
+    if cs_open is True and hours is not None and hours >= DEFAULT_CS_OPEN_HOURS:
+        return RuleHit(
+            RULE_CS_EXCEPTION_OPEN,
+            SEVERITY_FLAG,
+            "CS case open >=24h",
+            {"cs_open": 1, "cs_open_hours": hours, "threshold": DEFAULT_CS_OPEN_HOURS},
+        )
+    return None
+
+
+def _eval_account_health(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    reasons: list[str] = []
+    detail: dict[str, Any] = {}
+    defect = _f(_get(row, "account_defect_rate"))
+    if defect is not None and defect > DEFAULT_ACCOUNT_DEFECT_RATE_MAX:
+        reasons.append(
+            f"defect_rate {defect:.4f} > {DEFAULT_ACCOUNT_DEFECT_RATE_MAX}"
+        )
+        detail["account_defect_rate"] = defect
+    if _truthy_int(_get(row, "policy_strike")) is True:
+        reasons.append("policy_strike")
+        detail["policy_strike"] = 1
+    if _truthy_int(_get(row, "selling_limit_hit")) is True:
+        reasons.append("selling_limit_hit")
+        detail["selling_limit_hit"] = 1
+    if not reasons:
+        return None
+    detail["threshold"] = DEFAULT_ACCOUNT_DEFECT_RATE_MAX
+    return RuleHit(
+        RULE_ACCOUNT_HEALTH_RISK,
+        SEVERITY_FLAG,
+        "account health risk",
+        detail,
+    )
+
+
+def _eval_tracking_missing(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    status = str(_get(row, "order_status") or "").strip().upper()
+    if status not in TRACKING_ORDER_STATUSES:
+        return None
+    hours = _hours_since_order(row)
+    if hours is None or hours <= DEFAULT_TRACKING_HOURS_MAX:
+        return None
+    if not _tracking_empty(row):
+        return None
+    return RuleHit(
+        RULE_TRACKING_MISSING,
+        SEVERITY_FLAG,
+        f"no tracking after {hours:.1f}h",
+        {
+            "order_status": status,
+            "hours_since_order": hours,
+            "tracking_number": None,
+            "threshold_hours": DEFAULT_TRACKING_HOURS_MAX,
+        },
+    )
+
+
+def _eval_fulfillment_late(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    hours = _hours_since_order(row)
+    if hours is None or hours <= DEFAULT_FULFILLMENT_HOURS_MAX:
+        return None
+    ship_status = str(
+        _get(row, "ship_status") or _get(row, "shipping_status") or ""
+    ).strip().upper()
+    if ship_status == "SHIPPED":
+        return None
+    # Require evidence of an order clock (ordered_at / hours / order_status).
+    if (
+        _get(row, "ordered_at") is None
+        and _get(row, "hours_since_order") is None
+        and not str(_get(row, "order_status") or "").strip()
+    ):
+        return None
+    return RuleHit(
+        RULE_FULFILLMENT_LATE,
+        SEVERITY_FLAG,
+        f"fulfillment late {hours:.1f}h",
+        {
+            "hours_since_order": hours,
+            "ship_status": ship_status or None,
+            "threshold_hours": DEFAULT_FULFILLMENT_HOURS_MAX,
+        },
+    )
+
+
+def _eval_duplicate_listing(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    count = _i(_get(row, "active_offer_count"))
+    if count is None:
+        return None
+    if count > DEFAULT_DUPLICATE_ACTIVE_MAX:
+        return RuleHit(
+            RULE_DUPLICATE_LISTING,
+            SEVERITY_PAUSE,
+            "duplicate active offers",
+            {
+                "active_offer_count": count,
+                "ebay_item_ids": _get(row, "ebay_item_ids"),
+                "threshold": DEFAULT_DUPLICATE_ACTIVE_MAX,
+            },
+        )
+    return None
+
+
+def _missing_specifics_present(value: Any) -> bool:
+    if value is None:
+        return False
+    flag = _truthy_int(value)
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    if isinstance(value, (list, tuple, set)):
+        return len(value) > 0
+    text = str(value).strip()
+    return text not in {"", "[]", "{}", "null", "None"}
+
+
+def _eval_invalid_listing(
+    row: Mapping[str, Any], settings: Settings
+) -> RuleHit | None:
+    reasons: list[str] = []
+    detail: dict[str, Any] = {}
+    validation_ok = _truthy_int(_get(row, "listing_validation_ok"))
+    if validation_ok is False:
+        reasons.append("listing_validation_ok=0")
+        detail["listing_validation_ok"] = 0
+    missing = _get(row, "missing_specifics")
+    if _missing_specifics_present(missing):
+        reasons.append("missing_specifics")
+        detail["missing_specifics"] = missing
+    if _truthy_int(_get(row, "identity_mismatch")) is True:
+        reasons.append("identity_mismatch")
+        detail["identity_mismatch"] = 1
+    if not reasons:
+        return None
+    return RuleHit(
+        RULE_INVALID_LISTING,
+        SEVERITY_PAUSE,
+        "invalid listing shape",
+        detail,
+    )
+
+
 EXCEPTION_RULES: tuple[ExceptionRule, ...] = (
     ExceptionRule(
         RULE_STOCK_LEQ_BUFFER,
@@ -249,6 +585,60 @@ EXCEPTION_RULES: tuple[ExceptionRule, ...] = (
         SEVERITY_PAUSE,
         _eval_channel_auth,
     ),
+    ExceptionRule(
+        RULE_COST_SPIKE,
+        "dealer_cost rose >= 10% vs last_known_cost",
+        SEVERITY_PAUSE,
+        _eval_cost_spike,
+    ),
+    ExceptionRule(
+        RULE_RETURNS_RATE_HIGH,
+        "returns/sales > 8% with sales_units >= 5",
+        SEVERITY_PAUSE,
+        _eval_returns_rate,
+    ),
+    ExceptionRule(
+        RULE_CANCELLATION_RATE_HIGH,
+        "cancels/(sales+cancels) > 5% with n >= 5",
+        SEVERITY_PAUSE,
+        _eval_cancellation_rate,
+    ),
+    ExceptionRule(
+        RULE_CS_EXCEPTION_OPEN,
+        "open CS case >= 24h",
+        SEVERITY_FLAG,
+        _eval_cs_exception_open,
+    ),
+    ExceptionRule(
+        RULE_ACCOUNT_HEALTH_RISK,
+        "account defect_rate > 2% / policy_strike / selling_limit_hit",
+        SEVERITY_FLAG,
+        _eval_account_health,
+    ),
+    ExceptionRule(
+        RULE_TRACKING_MISSING,
+        "SIMULATED_ORDER/AWAITING_SHIP > 48h without tracking",
+        SEVERITY_FLAG,
+        _eval_tracking_missing,
+    ),
+    ExceptionRule(
+        RULE_FULFILLMENT_LATE,
+        "order > 72h and not SHIPPED",
+        SEVERITY_FLAG,
+        _eval_fulfillment_late,
+    ),
+    ExceptionRule(
+        RULE_DUPLICATE_LISTING,
+        "active_offer_count > 1",
+        SEVERITY_PAUSE,
+        _eval_duplicate_listing,
+    ),
+    ExceptionRule(
+        RULE_INVALID_LISTING,
+        "listing_validation_ok=0 / missing specifics / identity mismatch",
+        SEVERITY_PAUSE,
+        _eval_invalid_listing,
+    ),
 )
 
 
@@ -261,9 +651,10 @@ def evaluate_candidate(
     """Evaluate deterministic per-SKU rules; return all hits (no side effects)."""
     settings = settings or get_settings()
     active = rules if rules is not None else EXCEPTION_RULES
+    flat = _flatten_row(row)
     hits: list[RuleHit] = []
     for rule in active:
-        hit = rule.evaluate(row, settings)
+        hit = rule.evaluate(flat, settings)
         if hit is not None:
             hits.append(hit)
     return hits
@@ -387,7 +778,7 @@ def _pause_product(
     sku: str,
     reason: str,
 ) -> None:
-    if sku == GLOBAL_INGEST_SKU:
+    if sku in {GLOBAL_INGEST_SKU, GLOBAL_ACCOUNT_SKU}:
         return
     conn.execute(
         """
@@ -428,6 +819,30 @@ def _load_scan_rows(
             p.paused AS paused,
             p.pause_reason AS pause_reason,
             p.listing_status AS listing_status,
+            p.order_status AS order_status,
+            p.dealer_cost AS dealer_cost,
+            p.last_known_cost AS last_known_cost,
+            p.net_cost AS net_cost,
+            COALESCE(p.returns, c.returns) AS returns,
+            COALESCE(p.cancellations, c.cancellations) AS cancellations,
+            COALESCE(p.sales_units, c.sales_units) AS sales_units,
+            p.tracking_number AS tracking_number,
+            p.ordered_at AS ordered_at,
+            p.hours_since_order AS hours_since_order,
+            p.ship_status AS ship_status,
+            p.active_offer_count AS active_offer_count,
+            p.ebay_item_ids AS ebay_item_ids,
+            p.listing_validation_ok AS listing_validation_ok,
+            p.missing_specifics AS missing_specifics,
+            p.identity_mismatch AS identity_mismatch,
+            p.cs_open AS cs_open,
+            p.cs_open_hours AS cs_open_hours,
+            p.cs_opened_at AS cs_opened_at,
+            p.account_defect_rate AS account_defect_rate,
+            p.policy_strike AS policy_strike,
+            p.selling_limit_hit AS selling_limit_hit,
+            p.cancel_fault AS cancel_fault,
+            c.detail_json AS detail_json,
             c.pipeline_source AS pipeline_source,
             c.cohort AS cohort,
             c.snapshot_id AS snapshot_id,
@@ -464,6 +879,30 @@ def _load_scan_rows(
             p.paused AS paused,
             p.pause_reason AS pause_reason,
             p.listing_status AS listing_status,
+            p.order_status AS order_status,
+            p.dealer_cost AS dealer_cost,
+            p.last_known_cost AS last_known_cost,
+            p.net_cost AS net_cost,
+            p.returns AS returns,
+            p.cancellations AS cancellations,
+            p.sales_units AS sales_units,
+            p.tracking_number AS tracking_number,
+            p.ordered_at AS ordered_at,
+            p.hours_since_order AS hours_since_order,
+            p.ship_status AS ship_status,
+            p.active_offer_count AS active_offer_count,
+            p.ebay_item_ids AS ebay_item_ids,
+            p.listing_validation_ok AS listing_validation_ok,
+            p.missing_specifics AS missing_specifics,
+            p.identity_mismatch AS identity_mismatch,
+            p.cs_open AS cs_open,
+            p.cs_open_hours AS cs_open_hours,
+            p.cs_opened_at AS cs_opened_at,
+            p.account_defect_rate AS account_defect_rate,
+            p.policy_strike AS policy_strike,
+            p.selling_limit_hit AS selling_limit_hit,
+            p.cancel_fault AS cancel_fault,
+            NULL AS detail_json,
             p.pipeline_source AS pipeline_source,
             p.cohort AS cohort,
             NULL AS snapshot_id,
@@ -488,7 +927,116 @@ def _load_scan_rows(
         sim_params.append(remaining)
     for r in conn.execute(sim_sql, sim_params).fetchall():
         rows.append(dict(r))
+
+    # Account-health sentinel row (sku=__ACCOUNT__) when present on products.
+    seen = {r["sku"] for r in rows}
+    if GLOBAL_ACCOUNT_SKU not in seen:
+        acct = conn.execute(
+            """
+            SELECT
+                p.sku AS sku,
+                p.stock AS stock,
+                p.shipping_status AS shipping_status,
+                COALESCE(p.listable_profit, p.contribution_profit) AS listable_profit,
+                COALESCE(p.listable_margin, p.contribution_margin) AS listable_margin,
+                p.contribution_profit AS contribution_profit,
+                p.contribution_margin AS contribution_margin,
+                p.map AS map,
+                p.sell_comp AS sell_comp,
+                p.map_ok AS map_ok,
+                p.channel_ok AS channel_ok,
+                p.opportunity_only AS opportunity_only,
+                p.paused AS paused,
+                p.pause_reason AS pause_reason,
+                p.listing_status AS listing_status,
+                p.order_status AS order_status,
+                p.dealer_cost AS dealer_cost,
+                p.last_known_cost AS last_known_cost,
+                p.net_cost AS net_cost,
+                p.returns AS returns,
+                p.cancellations AS cancellations,
+                p.sales_units AS sales_units,
+                p.tracking_number AS tracking_number,
+                p.ordered_at AS ordered_at,
+                p.hours_since_order AS hours_since_order,
+                p.ship_status AS ship_status,
+                p.active_offer_count AS active_offer_count,
+                p.ebay_item_ids AS ebay_item_ids,
+                p.listing_validation_ok AS listing_validation_ok,
+                p.missing_specifics AS missing_specifics,
+                p.identity_mismatch AS identity_mismatch,
+                p.cs_open AS cs_open,
+                p.cs_open_hours AS cs_open_hours,
+                p.cs_opened_at AS cs_opened_at,
+                p.account_defect_rate AS account_defect_rate,
+                p.policy_strike AS policy_strike,
+                p.selling_limit_hit AS selling_limit_hit,
+                p.cancel_fault AS cancel_fault,
+                NULL AS detail_json,
+                p.pipeline_source AS pipeline_source,
+                p.cohort AS cohort,
+                NULL AS snapshot_id,
+                p.listable_rank AS rank
+            FROM products p
+            WHERE p.sku = ?
+            """,
+            (GLOBAL_ACCOUNT_SKU,),
+        ).fetchone()
+        if acct is not None:
+            rows.append(dict(acct))
     return rows
+
+
+
+def _cs_open_hours_from_actions(
+    conn: sqlite3.Connection, sku: str
+) -> float | None:
+    """Hours since newest open cs_case/cs_exception action for sku, else None."""
+    if not sku:
+        return None
+    row = conn.execute(
+        """
+        SELECT ts, decision, detail_json
+        FROM actions
+        WHERE sku = ? AND action IN ('cs_case', 'cs_exception')
+        ORDER BY ts DESC, id DESC
+        LIMIT 1
+        """,
+        (sku,),
+    ).fetchone()
+    if row is None:
+        return None
+    decision = str(row["decision"] or "").strip().lower()
+    if decision not in {"open", "opened", "pending"}:
+        return None
+    detail = {}
+    raw = row["detail_json"]
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, Mapping):
+                detail = dict(parsed)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            detail = {}
+    hours = _f(detail.get("cs_open_hours"))
+    if hours is not None:
+        return hours
+    opened = _parse_dt(detail.get("cs_opened_at") or row["ts"])
+    if opened is None:
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - opened).total_seconds() / 3600.0)
+
+
+def _enrich_row_for_rules(
+    conn: sqlite3.Connection, row: Mapping[str, Any]
+) -> dict[str, Any]:
+    flat = _flatten_row(row)
+    if flat.get("cs_open") is None:
+        hours = _cs_open_hours_from_actions(conn, str(flat.get("sku") or ""))
+        if hours is not None:
+            flat["cs_open"] = 1
+            flat["cs_open_hours"] = hours
+    return flat
 
 
 def _is_db_locked(exc: BaseException) -> bool:
@@ -571,7 +1119,7 @@ def _scan_exceptions_once(
         sku = str(row.get("sku") or "")
         if not sku:
             continue
-        hits = evaluate_candidate(row, settings)
+        hits = evaluate_candidate(_enrich_row_for_rules(conn, row), settings)
         if not hits:
             continue
         pause_reasons: list[str] = []

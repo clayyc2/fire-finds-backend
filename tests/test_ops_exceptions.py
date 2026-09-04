@@ -8,14 +8,24 @@ from firefinds.action_log.logger import ActionLogger
 from firefinds.config import Settings
 from firefinds.db.schema import init_db
 from firefinds.ops.exceptions import (
+    GLOBAL_ACCOUNT_SKU,
     GLOBAL_INGEST_SKU,
+    RULE_ACCOUNT_HEALTH_RISK,
     RULE_API_INGEST_FAILURE_STREAK,
+    RULE_CANCELLATION_RATE_HIGH,
     RULE_CHANNEL_AUTH_FAIL,
+    RULE_COST_SPIKE,
+    RULE_CS_EXCEPTION_OPEN,
+    RULE_DUPLICATE_LISTING,
+    RULE_FULFILLMENT_LATE,
+    RULE_INVALID_LISTING,
     RULE_MAP_BREACH,
     RULE_MARGIN_BELOW_MIN,
     RULE_PROFIT_BELOW_MIN,
+    RULE_RETURNS_RATE_HIGH,
     RULE_SHIPPING_UNRESOLVED,
     RULE_STOCK_LEQ_BUFFER,
+    RULE_TRACKING_MISSING,
     evaluate_candidate,
     ingest_failure_streak,
     list_exceptions,
@@ -186,7 +196,7 @@ def test_scan_ingest_streak_global(settings: Settings):
     conn.close()
 
 
-def test_rule_catalog_lists_all_seven():
+def test_rule_catalog_lists_all_sixteen():
     codes = {r["code"] for r in rule_catalog()}
     assert codes == {
         RULE_STOCK_LEQ_BUFFER,
@@ -196,6 +206,15 @@ def test_rule_catalog_lists_all_seven():
         RULE_MAP_BREACH,
         RULE_CHANNEL_AUTH_FAIL,
         RULE_API_INGEST_FAILURE_STREAK,
+        RULE_COST_SPIKE,
+        RULE_RETURNS_RATE_HIGH,
+        RULE_CANCELLATION_RATE_HIGH,
+        RULE_CS_EXCEPTION_OPEN,
+        RULE_ACCOUNT_HEALTH_RISK,
+        RULE_TRACKING_MISSING,
+        RULE_FULFILLMENT_LATE,
+        RULE_DUPLICATE_LISTING,
+        RULE_INVALID_LISTING,
     }
 
 
@@ -238,7 +257,7 @@ def test_cli_ops_exceptions_scan_list(monkeypatch, tmp_path, capsys):
     rc = main(["ops-exceptions", "rules"])
     assert rc == 0
     catalog = json.loads(capsys.readouterr().out)
-    assert len(catalog) == 7
+    assert len(catalog) == 16
 
 
 def test_connect_sets_busy_timeout(tmp_path):
@@ -292,3 +311,251 @@ def test_scan_retries_on_database_locked(settings: Settings, monkeypatch):
     assert summary["scanned"] == 1
     assert summary["paused_count"] == 1
     assert summary["hits_by_rule"][RULE_STOCK_LEQ_BUFFER] == 1
+
+
+def test_rule_cost_spike(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(dealer_cost=125.7, last_known_cost=100.0), settings
+    )
+    assert RULE_COST_SPIKE in {h.rule_code for h in hits}
+    msg = next(h.message for h in hits if h.rule_code == RULE_COST_SPIKE)
+    assert "25.7%" in msg
+    hits_ok = evaluate_candidate(
+        _base_ok(dealer_cost=109.0, last_known_cost=100.0), settings
+    )
+    assert RULE_COST_SPIKE not in {h.rule_code for h in hits_ok}
+    # Exactly 10% still trips (>= threshold)
+    hits_eq = evaluate_candidate(
+        _base_ok(dealer_cost=110.0, last_known_cost=100.0), settings
+    )
+    assert RULE_COST_SPIKE in {h.rule_code for h in hits_eq}
+
+
+def test_rule_returns_rate_high(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(returns=2, sales_units=10), settings
+    )
+    assert RULE_RETURNS_RATE_HIGH in {h.rule_code for h in hits}
+    hits_low_n = evaluate_candidate(
+        _base_ok(returns=1, sales_units=4), settings
+    )
+    assert RULE_RETURNS_RATE_HIGH not in {h.rule_code for h in hits_low_n}
+    hits_ok = evaluate_candidate(
+        _base_ok(returns=0, sales_units=10), settings
+    )
+    assert RULE_RETURNS_RATE_HIGH not in {h.rule_code for h in hits_ok}
+
+
+def test_rule_cancellation_rate_high(settings: Settings):
+    # 3 / (10+3) ≈ 23.1%
+    hits = evaluate_candidate(
+        _base_ok(cancellations=3, sales_units=10), settings
+    )
+    hit = next(h for h in hits if h.rule_code == RULE_CANCELLATION_RATE_HIGH)
+    assert hit.severity == "pause"
+    assert "23.1%" in hit.message
+    hits_buyer = evaluate_candidate(
+        _base_ok(cancellations=3, sales_units=10, cancel_fault="buyer"),
+        settings,
+    )
+    hit_b = next(
+        h for h in hits_buyer if h.rule_code == RULE_CANCELLATION_RATE_HIGH
+    )
+    assert hit_b.severity == "flag"
+    hits_ok = evaluate_candidate(
+        _base_ok(cancellations=0, sales_units=10), settings
+    )
+    assert RULE_CANCELLATION_RATE_HIGH not in {h.rule_code for h in hits_ok}
+
+
+def test_rule_cs_exception_open(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(cs_open=1, cs_open_hours=24), settings
+    )
+    assert RULE_CS_EXCEPTION_OPEN in {h.rule_code for h in hits}
+    hits_short = evaluate_candidate(
+        _base_ok(cs_open=1, cs_open_hours=23.9), settings
+    )
+    assert RULE_CS_EXCEPTION_OPEN not in {h.rule_code for h in hits_short}
+    hits_detail = evaluate_candidate(
+        _base_ok(detail_json={"cs_open": 1, "cs_open_hours": 30}), settings
+    )
+    assert RULE_CS_EXCEPTION_OPEN in {h.rule_code for h in hits_detail}
+
+
+def test_rule_account_health_risk(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(sku=GLOBAL_ACCOUNT_SKU, account_defect_rate=0.03), settings
+    )
+    assert RULE_ACCOUNT_HEALTH_RISK in {h.rule_code for h in hits}
+    hits_strike = evaluate_candidate(_base_ok(policy_strike=1), settings)
+    assert RULE_ACCOUNT_HEALTH_RISK in {h.rule_code for h in hits_strike}
+    hits_limit = evaluate_candidate(_base_ok(selling_limit_hit=1), settings)
+    assert RULE_ACCOUNT_HEALTH_RISK in {h.rule_code for h in hits_limit}
+    hits_ok = evaluate_candidate(
+        _base_ok(account_defect_rate=0.02, policy_strike=0, selling_limit_hit=0),
+        settings,
+    )
+    assert RULE_ACCOUNT_HEALTH_RISK not in {h.rule_code for h in hits_ok}
+
+
+def test_rule_tracking_missing(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(
+            order_status="SIMULATED_ORDER",
+            hours_since_order=60.0,
+            tracking_number=None,
+        ),
+        settings,
+    )
+    assert RULE_TRACKING_MISSING in {h.rule_code for h in hits}
+    hits_tracked = evaluate_candidate(
+        _base_ok(
+            order_status="AWAITING_SHIP",
+            hours_since_order=60.0,
+            tracking_number="1Z999",
+        ),
+        settings,
+    )
+    assert RULE_TRACKING_MISSING not in {h.rule_code for h in hits_tracked}
+    hits_early = evaluate_candidate(
+        _base_ok(
+            order_status="SIMULATED_ORDER",
+            hours_since_order=48.0,
+            tracking_number="",
+        ),
+        settings,
+    )
+    assert RULE_TRACKING_MISSING not in {h.rule_code for h in hits_early}
+
+
+def test_rule_fulfillment_late(settings: Settings):
+    hits = evaluate_candidate(
+        _base_ok(
+            order_status="SIMULATED_ORDER",
+            hours_since_order=96.0,
+            ship_status="AWAITING_SHIP",
+            tracking_number=None,
+        ),
+        settings,
+    )
+    codes = {h.rule_code for h in hits}
+    assert RULE_FULFILLMENT_LATE in codes
+    assert RULE_TRACKING_MISSING in codes
+    hits_shipped = evaluate_candidate(
+        _base_ok(
+            order_status="SIMULATED_ORDER",
+            hours_since_order=96.0,
+            ship_status="SHIPPED",
+            tracking_number="1Z",
+        ),
+        settings,
+    )
+    assert RULE_FULFILLMENT_LATE not in {h.rule_code for h in hits_shipped}
+
+
+def test_rule_duplicate_listing(settings: Settings):
+    hits = evaluate_candidate(_base_ok(active_offer_count=2), settings)
+    assert RULE_DUPLICATE_LISTING in {h.rule_code for h in hits}
+    hits_ok = evaluate_candidate(_base_ok(active_offer_count=1), settings)
+    assert RULE_DUPLICATE_LISTING not in {h.rule_code for h in hits_ok}
+
+
+def test_rule_invalid_listing(settings: Settings):
+    hits = evaluate_candidate(_base_ok(listing_validation_ok=0), settings)
+    assert RULE_INVALID_LISTING in {h.rule_code for h in hits}
+    hits_id = evaluate_candidate(_base_ok(identity_mismatch=1), settings)
+    assert RULE_INVALID_LISTING in {h.rule_code for h in hits_id}
+    hits_miss = evaluate_candidate(
+        _base_ok(missing_specifics=["Brand"]), settings
+    )
+    assert RULE_INVALID_LISTING in {h.rule_code for h in hits_miss}
+    hits_ok = evaluate_candidate(
+        _base_ok(
+            listing_validation_ok=1,
+            identity_mismatch=0,
+            missing_specifics=0,
+        ),
+        settings,
+    )
+    assert RULE_INVALID_LISTING not in {h.rule_code for h in hits_ok}
+
+
+def test_scan_account_health_sentinel(settings: Settings):
+    conn = init_db(settings.db_path)
+    conn.execute(
+        """
+        INSERT INTO products (sku, stock, shipping_status, listable_profit,
+            listable_margin, map, sell_comp, map_ok, channel_ok,
+            account_defect_rate, policy_strike)
+        VALUES (?, 10, 'RESOLVED', 20, 0.2, 10, 12, 1, 1, 0.05, 0)
+        """,
+        (GLOBAL_ACCOUNT_SKU,),
+    )
+    conn.commit()
+    summary = scan_exceptions(settings=settings, conn=conn, apply_pause=True)
+    assert summary["hits_by_rule"].get(RULE_ACCOUNT_HEALTH_RISK, 0) == 1
+    assert GLOBAL_ACCOUNT_SKU not in summary["paused_skus"]
+    rows = list_exceptions(
+        settings=settings,
+        conn=conn,
+        rule_code=RULE_ACCOUNT_HEALTH_RISK,
+        status="open,paused",
+    )
+    assert len(rows) == 1
+    assert rows[0]["sku"] == GLOBAL_ACCOUNT_SKU
+    conn.close()
+
+
+def test_scan_new_unlock_rules_persist(settings: Settings):
+    conn = init_db(settings.db_path)
+    conn.execute(
+        """
+        INSERT INTO products (
+            sku, stock, shipping_status, listable_profit, listable_margin,
+            contribution_profit, contribution_margin, map, sell_comp,
+            map_ok, channel_ok, opportunity_only, paused,
+            dealer_cost, last_known_cost, returns, sales_units,
+            cancellations, active_offer_count, listing_validation_ok,
+            order_status, hours_since_order, tracking_number, ship_status,
+            cs_open, cs_open_hours, listing_status
+        ) VALUES (
+            'UNLOCK-1', 10, 'RESOLVED', 20.0, 0.20,
+            20.0, 0.20, 50.0, 55.0,
+            1, 1, 0, 0,
+            125.7, 100.0, 2, 10,
+            3, 2, 0,
+            'SIMULATED_ORDER', 96.0, NULL, 'AWAITING_SHIP',
+            1, 30.0, 'SIMULATED_LISTED'
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO candidate_cohorts (
+            sku, pipeline_source, cohort, comparison_cohort_id, snapshot_id,
+            rank, listable_profit, listable_margin, sell_comp, map,
+            shipping_status, returns, cancellations, sales_units
+        ) VALUES (
+            'UNLOCK-1', 'RANDMAR_FIRST', 'SAFE_NATIONWIDE', 'cmp', 'snap-u',
+            1, 20.0, 0.20, 55.0, 50.0,
+            'RESOLVED', 2, 3, 10
+        )
+        """
+    )
+    conn.commit()
+    summary = scan_exceptions(
+        settings=settings, snapshot_id="snap-u", conn=conn, apply_pause=True
+    )
+    assert summary["scanned"] >= 1
+    h = summary["hits_by_rule"]
+    assert h.get(RULE_COST_SPIKE, 0) >= 1
+    assert h.get(RULE_RETURNS_RATE_HIGH, 0) >= 1
+    assert h.get(RULE_CANCELLATION_RATE_HIGH, 0) >= 1
+    assert h.get(RULE_DUPLICATE_LISTING, 0) >= 1
+    assert h.get(RULE_INVALID_LISTING, 0) >= 1
+    assert h.get(RULE_TRACKING_MISSING, 0) >= 1
+    assert h.get(RULE_FULFILLMENT_LATE, 0) >= 1
+    assert h.get(RULE_CS_EXCEPTION_OPEN, 0) >= 1
+    assert "UNLOCK-1" in summary["paused_skus"]
+    conn.close()
