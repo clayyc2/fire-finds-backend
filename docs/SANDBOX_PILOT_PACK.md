@@ -1,3 +1,6 @@
+> **Live Stage-2 pack:** see **`docs/SANDBOX_PILOT_PACK_v2.md`** (competitive-at-MAP Final 5; snapshot `20260904_1311`; ranked listable **149**).  
+> This file documents historical Final 5 v1 (mostly `no_competition` after official Browse CA).
+
 # SAFE_NATIONWIDE sandbox pilot pack (pointer)
 
 **Status:** `PREP_ONLY` — gates still **OFF**. Prep-only documentation; no publish / no orders.
@@ -12,12 +15,12 @@ Full draft (gitignored under `data/`):
 
 ## Cohort snapshot migration
 
-- **Live / current freeze:** `20260904_1224` — SAFE **289** / DEST **46** / QUARANTINE **101** (ranked finally-profitable **335**).
-- **Prior freeze (superseded for live ops):** `20260904_0140` — SAFE 275 / DEST 46 / QUARANTINE 113 (stale after wave-2 requote + validate).
-- Earlier: `20260903_1744` — SAFE 254 / DEST 42 / QUARANTINE 140.
+- **Live / current freeze:** `20260904_1311` — SAFE **124** / DEST **25** / QUARANTINE **101** (ranked listable **149** post Browse CA compete). See `docs/SANDBOX_PILOT_PACK_v2.md`.
+- **Prior freeze:** `20260904_1224` — SAFE 289 / DEST 46 / QUARANTINE 101 (pre-compete ranked **335**; superseded after official Browse cut).
+- Earlier: `20260904_0140` (SAFE 275) · `20260903_1744` (SAFE 254).
 - Refresh evidence: `data/reports/cohort_refresh_latest.md`.
-- Final 5 pilot SKUs below remain in SAFE on `20260904_1224`; Stage 0 dry-run pack **5/5 PASS**; **OAuth still blocked**.
-- Dry-run artifacts were produced under earlier snapshot ids (`20260903_1744` / `20260904_0140`).
+- **v1 Final 5 below:** mostly failed `no_competition` after Browse CA (4/5). Live Stage-2 pack is **v2 competitive-at-MAP**.
+- Dry-run artifacts for v1 were produced under earlier snapshot ids (`20260903_1744` / `20260904_0140`).
 
 ## Final 5 SKUs (`SAFE_NATIONWIDE` / originally `20260903_1744`; still SAFE on `20260904_1224`)
 
