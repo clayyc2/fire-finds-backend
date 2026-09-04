@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
@@ -490,6 +491,13 @@ def _load_scan_rows(
     return rows
 
 
+def _is_db_locked(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return isinstance(exc, sqlite3.OperationalError) and (
+        "locked" in msg or "busy" in msg
+    )
+
+
 def scan_exceptions(
     *,
     settings: Settings | None = None,
@@ -498,11 +506,56 @@ def scan_exceptions(
     ingest_streak_threshold: int = DEFAULT_INGEST_STREAK_THRESHOLD,
     apply_pause: bool = True,
     conn: sqlite3.Connection | None = None,
+    lock_retries: int = 8,
+    lock_retry_sleep_sec: float = 0.75,
 ) -> dict[str, Any]:
-    """Scan candidates / simulated listings; persist exceptions + action_log."""
+    """Scan candidates / simulated listings; persist exceptions + action_log.
+
+    Retries on SQLite lock/busy (e.g. concurrent image backfill) using connect()'s
+    busy_timeout plus a short outer backoff — avoids silent empty/zero summaries.
+    """
     settings = settings or get_settings()
     owns = conn is None
-    conn = conn or init_db(settings.db_path)
+    last_err: BaseException | None = None
+    for attempt in range(max(1, int(lock_retries))):
+        try:
+            if owns:
+                conn = init_db(settings.db_path)
+            assert conn is not None
+            return _scan_exceptions_once(
+                conn=conn,
+                owns=owns,
+                settings=settings,
+                snapshot_id=snapshot_id,
+                limit=limit,
+                ingest_streak_threshold=ingest_streak_threshold,
+                apply_pause=apply_pause,
+            )
+        except sqlite3.OperationalError as exc:
+            last_err = exc
+            if owns and conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = None
+            if not _is_db_locked(exc) or attempt >= int(lock_retries) - 1:
+                raise
+            time.sleep(float(lock_retry_sleep_sec) * (attempt + 1))
+    assert last_err is not None
+    raise last_err
+
+
+def _scan_exceptions_once(
+    *,
+    conn: sqlite3.Connection,
+    owns: bool,
+    settings: Settings,
+    snapshot_id: str | None,
+    limit: int | None,
+    ingest_streak_threshold: int,
+    apply_pause: bool,
+) -> dict[str, Any]:
     logger = ActionLogger(settings.actions_jsonl, conn=conn)
 
     rows = _load_scan_rows(conn, snapshot_id=snapshot_id, limit=limit)

@@ -239,3 +239,56 @@ def test_cli_ops_exceptions_scan_list(monkeypatch, tmp_path, capsys):
     assert rc == 0
     catalog = json.loads(capsys.readouterr().out)
     assert len(catalog) == 7
+
+
+def test_connect_sets_busy_timeout(tmp_path):
+    from firefinds.db.schema import connect
+
+    conn = connect(tmp_path / "busy.db")
+    assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
+    conn.close()
+
+
+def test_scan_retries_on_database_locked(settings: Settings, monkeypatch):
+    """Lock during init_db should retry rather than surface a zero/empty summary."""
+    import sqlite3
+
+    from firefinds.ops import exceptions as ex
+
+    calls = {"n": 0}
+    real_init = ex.init_db
+
+    def flaky_init(path):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise sqlite3.OperationalError("database is locked")
+        return real_init(path)
+
+    monkeypatch.setattr(ex, "init_db", flaky_init)
+    monkeypatch.setattr(ex.time, "sleep", lambda _s: None)
+
+    conn = real_init(settings.db_path)
+    conn.execute(
+        """
+        INSERT INTO products (sku, stock, shipping_status, listable_profit,
+            listable_margin, map, sell_comp, map_ok, channel_ok)
+        VALUES ('LOCK-1', 0, 'RESOLVED', 20, 0.2, 10, 12, 1, 1)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO candidate_cohorts (
+            sku, pipeline_source, cohort, comparison_cohort_id, snapshot_id
+        ) VALUES ('LOCK-1', 'RANDMAR_FIRST', 'SAFE_NATIONWIDE', 'c', 'snap-lock')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    summary = scan_exceptions(
+        settings=settings, snapshot_id="snap-lock", apply_pause=True
+    )
+    assert calls["n"] == 3
+    assert summary["scanned"] == 1
+    assert summary["paused_count"] == 1
+    assert summary["hits_by_rule"][RULE_STOCK_LEQ_BUFFER] == 1

@@ -344,12 +344,19 @@ CANDIDATE_COHORTS_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
 ]
 
 
-def connect(db_path: Path | str) -> sqlite3.Connection:
+def connect(
+    db_path: Path | str,
+    *,
+    timeout: float = 30.0,
+    busy_timeout_ms: int = 30_000,
+) -> sqlite3.Connection:
+    """Open SQLite with row_factory, FKs, and busy wait (avoids silent lock races)."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=float(timeout))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)};")
     return conn
 
 
