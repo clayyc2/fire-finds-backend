@@ -12,6 +12,10 @@ from firefinds.clients.ebay import (
     EbayCredentialsMissing,
     EbayUserOAuthNotConfigured,
 )
+from firefinds.listings.sandbox_e2e import (
+    run_sandbox_inventory_offer_e2e,
+    write_e2e_reports,
+)
 from firefinds.clients.randmar import SupplierOrdersDisabled
 from firefinds.config import get_settings
 from firefinds.services import (
@@ -575,6 +579,51 @@ def cmd_qa_ready(args: argparse.Namespace) -> int:
     return 1 if report["skus_failing"] else 0
 
 
+
+def cmd_ebay_sandbox_inventory_offer_e2e(args: argparse.Namespace) -> int:
+    """Final 5 v2.1 sandbox inventory+offer E2E; publish must refuse. Never Process."""
+    settings = get_settings()
+    if (
+        settings.ebay_sandbox_publish_enabled
+        or settings.ebay_production_enabled
+        or settings.supplier_orders_enabled
+    ):
+        print(
+            "Refusing: publish/production/orders gate is ON — keep them false for this E2E",
+            file=sys.stderr,
+        )
+        return 2
+    skus = None
+    if getattr(args, "sku", None):
+        skus = [s.strip() for s in args.sku if s and str(s).strip()]
+    drafts_dir = Path(args.drafts_dir) if args.drafts_dir else None
+    try:
+        report = run_sandbox_inventory_offer_e2e(
+            settings=settings,
+            skus=skus,
+            drafts_dir=drafts_dir,
+            assert_publish_refused=True,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"ebay-sandbox-inventory-offer-e2e failed: {exc}", file=sys.stderr)
+        return 2
+    paths = write_e2e_reports(report)
+    summary = {
+        "inventory": f"{report['summary']['inventory_ok']}/{report['summary']['inventory_total']}",
+        "offer": f"{report['summary']['offer_ok']}/{report['summary']['offer_total']}",
+        "publish_refused": f"{report['summary']['publish_refused']}/{report['summary']['publish_total']}",
+        "offer_blocker": report["summary"].get("offer_blocker"),
+        "gates": report.get("gates"),
+        "report_json": paths["json"],
+        "report_md": paths["md"],
+    }
+    print(json.dumps(summary, indent=2, default=str))
+    # Exit 0 if inventory all OK and publish all refused (offer may be blocked by Business Policy)
+    inv_ok = report["summary"]["inventory_ok"] == report["summary"]["inventory_total"]
+    pub_ok = report["summary"]["publish_refused"] == report["summary"]["publish_total"]
+    return 0 if inv_ok and pub_ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="firefinds",
@@ -637,6 +686,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show user refresh-token presence only (never prints secrets)",
     )
     p_tok.set_defaults(func=cmd_ebay_user_token_status)
+
+    p_e2e = sub.add_parser(
+        "ebay-sandbox-inventory-offer-e2e",
+        help=(
+            "Sandbox Final 5 inventory+offer E2E (user token); "
+            "assert publish refused; never Process"
+        ),
+    )
+    p_e2e.add_argument(
+        "--sku",
+        action="append",
+        default=None,
+        help="Optional SKU (repeatable); default = Final 5 v2.1",
+    )
+    p_e2e.add_argument(
+        "--drafts-dir",
+        default=None,
+        help="Draft dir with <SKU>.ORIGINAL_SUPPLIER.json",
+    )
+    p_e2e.set_defaults(func=cmd_ebay_sandbox_inventory_offer_e2e)
 
     def _add_queue_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(

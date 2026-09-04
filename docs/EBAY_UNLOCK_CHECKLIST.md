@@ -3,7 +3,7 @@
 > **Current stage (2026-09-04):** **Stage 0 ready / Stage-2 prep** — live freeze **`20260904_1348`** (post Band-A Browse keep): SAFE **127** / DEST **25** / QUAR **85** / ranked listable **152**. Prior `20260904_1311` SAFE 124 / DEST 25 / QUAR 101 / ranked 149. Prior freezes `20260904_1224` / `0140` / `1744` superseded for live ops. SAFE drafts + ORIGINAL_SUPPLIER creative present; quarantine excluded; gates **OFF**.  
 > **Sandbox Final 5 (pack v2.1):** competitive-at-MAP **SAFE**; dry-runs **5/5 PASS** — `data/reports/sandbox_pack_v2_dry_runs.md` (+ `sandbox_pilot_pack_v2.*`).  
 > **First-wave 25:** dry-runs **25/25 PASS** on `20260904_1311` — `data/reports/first_wave_25_dry_runs_20260904_1311.md` (+ `.json`). Wave playbook: `docs/STAGE2_WAVE_SIZING_PLAYBOOK.md`.  
-> **Blocked on:** §2 sandbox offer path (Business Policy / sellerRegistrationCompleted) → then Clay approve sandbox publish. §1b user OAuth **done**. Gates stay OFF.  
+> **Blocked on:** §2 offer — eBay **25709** Invalid categoryId (placeholder); then Business Policy / sellerRegistrationCompleted → Clay sandbox publish. §1b OAuth **done**. Gates stay OFF.  
 > Gates stay OFF. Official Browse CA compete already applied (listable 335→149); fee/Store readiness: `data/reports/ebay_ca_fee_model_149_book.md`.
 
 Gates stay **OFF** until each stage below is explicitly completed and human-approved.
@@ -101,8 +101,8 @@ user refresh token present for upcoming sandbox Sell inventory/offer work
 > `EBAY_FULFILLMENT_POLICY_ID`, `EBAY_PAYMENT_POLICY_ID`, `EBAY_RETURN_POLICY_ID`,
 > `EBAY_CATEGORY_ID`. Reports: `data/reports/sandbox_inventory_offer_e2e_<ts>.{json,md}`.
 
-- [x] Inventory API create/update inventory item against **sandbox** only (client + E2E; see latest report)
-- [ ] Offer create/update against sandbox only — **blocked** until Business Policies / seller registration eligible (fulfillment policies previously returned HTTP 400 “User is not eligible for Business Policy”; `sellerRegistrationCompleted:false` on privilege probe)
+- [x] Inventory API create/update inventory item against **sandbox** only — Final 5 v2.1 **5/5 OK** (`data/reports/sandbox_inventory_offer_e2e_20260904T195012Z.*`)
+- [ ] Offer create/update against sandbox only — **0/5**; exact eBay error **25709** “Invalid value for categoryId.” (drafts still use `placeholder`). Next: set real `EBAY_CATEGORY_ID` / draft category; Business Policy eligibility (`sellerRegistrationCompleted:false`; prior fulfillment-policies 400) may block after category is fixed
 - [ ] Policy IDs (fulfillment / payment / return) resolved for sandbox
 - [x] MAP floor + stock buffer + shipping RESOLVED re-checked in backend gates (dry-runs 5/5)
 - [x] Publish refused while `EBAY_SANDBOX_PUBLISH_ENABLED=false` (E2E asserts `EbayPublishDisabled`)

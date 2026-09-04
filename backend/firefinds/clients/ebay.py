@@ -1,9 +1,11 @@
-"""eBay API client: Browse competition (read-only) + gated Sell Sandbox stubs.
+"""eBay API client: Browse competition (read-only) + gated Sell Inventory/Offer.
 
 Browse uses OAuth client-credentials (application token).
 Sell user OAuth (authorization code → refresh token) is implemented for
-sandbox; inventory/offer/publish wrappers still refuse unless live-listing
-gates allow them. Secrets are never printed or logged.
+sandbox. Sandbox inventory/offer writes are allowed when a user refresh
+token is present without LIVE_LISTINGS_ENABLED; publish stays refused
+unless EBAY_SANDBOX_PUBLISH_ENABLED=true. Production Sell stays behind
+EBAY_PRODUCTION_ENABLED + LIVE_LISTINGS_ENABLED. Secrets are never printed.
 """
 
 from __future__ import annotations
@@ -57,6 +59,44 @@ class EbayPublishDisabled(RuntimeError):
 
 class EbayUserOAuthNotConfigured(RuntimeError):
     """Raised when RuName or user refresh token is missing."""
+
+
+class EbayApiError(RuntimeError):
+    """Sell/Browse API HTTP error with secrets-free details."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        error_id: int | str | None = None,
+        error_name: str | None = None,
+        raw_errors: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.error_id = error_id
+        self.error_name = error_name
+        self.raw_errors = raw_errors or []
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "message": str(self),
+            "status": self.status,
+            "error_id": self.error_id,
+            "error_name": self.error_name,
+            "errors": [
+                {
+                    "errorId": e.get("errorId"),
+                    "message": e.get("message"),
+                    "longMessage": e.get("longMessage"),
+                    "domain": e.get("domain"),
+                    "category": e.get("category"),
+                }
+                for e in self.raw_errors
+                if isinstance(e, dict)
+            ],
+        }
 
 
 @dataclass(frozen=True)
@@ -400,21 +440,46 @@ class EbayClient:
     # --- Sell Sandbox stubs (gated) --------------------------------------
 
     def _assert_listings_allowed(self, *, publish: bool = False) -> None:
-        if not self.settings.live_listings_enabled:
-            raise EbayListingsDisabled(
-                "LIVE_LISTINGS_ENABLED is false; refusing Sell inventory/offer/"
-                "publish. Keep this gate off until intentionally enabling live "
-                "listings."
-            )
-        if self.settings.ebay_env == "production" and not self.settings.ebay_production_enabled:
-            raise EbayListingsDisabled(
-                "EBAY_PRODUCTION_ENABLED is false; refusing production Sell calls."
-            )
-        if publish and not self.settings.ebay_sandbox_publish_enabled:
-            raise EbayPublishDisabled(
-                "EBAY_SANDBOX_PUBLISH_ENABLED is false; refusing publish even in "
-                "sandbox. Default is off."
-            )
+        """Gate Sell writes.
+
+        Sandbox inventory/offer: allowed when user refresh token is present
+        (or LIVE_LISTINGS_ENABLED) — does **not** require LIVE_LISTINGS_ENABLED.
+        Sandbox publish: refused unless EBAY_SANDBOX_PUBLISH_ENABLED=true.
+        Production Sell: requires EBAY_PRODUCTION_ENABLED + LIVE_LISTINGS_ENABLED.
+        """
+        is_production = self.settings.ebay_env == "production"
+
+        if is_production:
+            if not self.settings.ebay_production_enabled:
+                raise EbayListingsDisabled(
+                    "EBAY_PRODUCTION_ENABLED is false; refusing production Sell calls."
+                )
+            if not self.settings.live_listings_enabled:
+                raise EbayListingsDisabled(
+                    "LIVE_LISTINGS_ENABLED is false; refusing production Sell "
+                    "inventory/offer/publish."
+                )
+            return
+
+        # sandbox
+        if publish:
+            if not self.settings.ebay_sandbox_publish_enabled:
+                raise EbayPublishDisabled(
+                    "EBAY_SANDBOX_PUBLISH_ENABLED is false; refusing publish even in "
+                    "sandbox. Default is off."
+                )
+            return
+
+        # sandbox inventory / offer
+        if self.user_refresh_token_present():
+            return
+        if self.settings.live_listings_enabled:
+            return
+        raise EbayListingsDisabled(
+            "Sandbox Sell inventory/offer requires a stored user refresh token "
+            "(ebay-oauth-exchange) while LIVE_LISTINGS_ENABLED is false. "
+            "Publish remains gated by EBAY_SANDBOX_PUBLISH_ENABLED."
+        )
 
     # --- User OAuth (authorization code → refresh token) -----------------
 
@@ -646,32 +711,206 @@ class EbayClient:
             "scopes": list(SELL_USER_SCOPES),
             "note": (
                 "Presence only — token values are never printed. "
-                "Sell publish still gated by LIVE_LISTINGS_ENABLED / "
+                "Sandbox inventory/offer OK with refresh token; publish gated by "
                 "EBAY_SANDBOX_PUBLISH_ENABLED."
             ),
         }
 
+    # --- Sell Inventory / Offer (user token) ------------------------------
+
+    def _user_auth_headers(self) -> dict[str, str]:
+        token = self.get_user_access_token()
+        return {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Content-Language": "en-CA",
+            "X-EBAY-C-MARKETPLACE-ID": self.settings.ebay_marketplace_id,
+        }
+
+    @staticmethod
+    def _parse_ebay_errors(body: bytes | str | None) -> list[dict[str, Any]]:
+        if not body:
+            return []
+        try:
+            if isinstance(body, bytes):
+                text = body.decode("utf-8", errors="replace")
+            else:
+                text = body
+            payload = json.loads(text)
+        except (UnicodeError, json.JSONDecodeError, TypeError):
+            return []
+        if isinstance(payload, dict):
+            errs = payload.get("errors")
+            if isinstance(errs, list):
+                return [e for e in errs if isinstance(e, dict)]
+        return []
+
+    def _raise_sell_http(self, exc: urllib.error.HTTPError, *, op: str) -> None:
+        raw = b""
+        try:
+            raw = exc.read() or b""
+        except Exception:
+            raw = b""
+        errors = self._parse_ebay_errors(raw)
+        first = errors[0] if errors else {}
+        msg = (
+            first.get("longMessage")
+            or first.get("message")
+            or f"eBay Sell {op} failed: HTTP {exc.code}"
+        )
+        # Never include raw body (may echo tokens); message fields are API text.
+        raise EbayApiError(
+            str(msg)[:500],
+            status=int(exc.code),
+            error_id=first.get("errorId"),
+            error_name=first.get("errorName") or first.get("category"),
+            raw_errors=errors,
+        ) from None
+
+    def _sell_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        op: str = "request",
+        retry_401: bool = True,
+    ) -> dict[str, Any] | None:
+        """Authenticated Sell API call. Returns parsed JSON or None for empty 204."""
+        url = f"{self._sell_base()}{path}"
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+        headers = self._user_auth_headers()
+        req = urllib.request.Request(url, data=data, method=method.upper(), headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read() or b""
+                if not raw:
+                    return None
+                return json.loads(raw.decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401 and retry_401:
+                self._user_access_token = None
+                self._user_access_token_expires_at = 0.0
+                return self._sell_json(
+                    method, path, body=body, op=op, retry_401=False
+                )
+            self._raise_sell_http(exc, op=op)
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"eBay Sell {op} failed: {exc.reason}") from None
+        return None  # pragma: no cover
+
+    @staticmethod
+    def _inventory_body(payload: dict[str, Any]) -> dict[str, Any]:
+        """Body for createOrReplaceInventoryItem (sku is path-only)."""
+        body = dict(payload)
+        body.pop("sku", None)
+        # Drop nullish product fields that eBay may reject
+        product = body.get("product")
+        if isinstance(product, dict):
+            cleaned = {k: v for k, v in product.items() if v not in (None, "", [])}
+            body["product"] = cleaned
+        return body
+
     def create_or_replace_inventory_item(
         self, sku: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        """Sell Inventory API stub — refused when LIVE_LISTINGS_ENABLED=false."""
+        """PUT sell/inventory/v1/inventory_item/{sku} with user access token."""
         self._assert_listings_allowed(publish=False)
-        _ = (sku, payload, self._sell_base())
-        raise NotImplementedError(
-            "Sell inventory create/replace not implemented while gated."
+        sku_clean = str(sku or "").strip()
+        if not sku_clean:
+            raise ValueError("sku is required")
+        body = self._inventory_body(payload if isinstance(payload, dict) else {})
+        encoded = urllib.parse.quote(sku_clean, safe="")
+        result = self._sell_json(
+            "PUT",
+            f"/inventory/v1/inventory_item/{encoded}",
+            body=body,
+            op="createOrReplaceInventoryItem",
         )
+        # Success is often HTTP 204 with empty body
+        return result if isinstance(result, dict) else {"ok": True, "sku": sku_clean}
+
+    def get_offers_for_sku(self, sku: str) -> dict[str, Any]:
+        """GET sell/inventory/v1/offer?sku=..."""
+        self._assert_listings_allowed(publish=False)
+        sku_clean = str(sku or "").strip()
+        qs = urllib.parse.urlencode({"sku": sku_clean})
+        result = self._sell_json(
+            "GET", f"/inventory/v1/offer?{qs}", op="getOffers"
+        )
+        return result if isinstance(result, dict) else {"offers": []}
 
     def create_offer(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Sell Offer API stub — refused when LIVE_LISTINGS_ENABLED=false."""
+        """POST sell/inventory/v1/offer with user access token."""
         self._assert_listings_allowed(publish=False)
-        _ = (payload, self._sell_base())
-        raise NotImplementedError("Sell createOffer not implemented while gated.")
+        if not isinstance(payload, dict) or not payload.get("sku"):
+            raise ValueError("create_offer requires payload with sku")
+        result = self._sell_json(
+            "POST", "/inventory/v1/offer", body=payload, op="createOffer"
+        )
+        return result if isinstance(result, dict) else {"ok": True}
+
+    def update_offer(self, offer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """PUT sell/inventory/v1/offer/{offerId}."""
+        self._assert_listings_allowed(publish=False)
+        oid = str(offer_id or "").strip()
+        if not oid:
+            raise ValueError("offer_id is required")
+        body = dict(payload) if isinstance(payload, dict) else {}
+        # offerId is path-only
+        body.pop("offerId", None)
+        result = self._sell_json(
+            "PUT",
+            f"/inventory/v1/offer/{urllib.parse.quote(oid, safe='')}",
+            body=body,
+            op="updateOffer",
+        )
+        return result if isinstance(result, dict) else {"ok": True, "offerId": oid}
+
+    def create_or_update_offer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create offer, or update if one already exists for the SKU."""
+        self._assert_listings_allowed(publish=False)
+        sku = str((payload or {}).get("sku") or "").strip()
+        if not sku:
+            raise ValueError("offer payload requires sku")
+        try:
+            existing = self.get_offers_for_sku(sku)
+        except EbayApiError:
+            existing = {"offers": []}
+        offers = existing.get("offers") if isinstance(existing, dict) else None
+        if isinstance(offers, list) and offers:
+            first = offers[0] if isinstance(offers[0], dict) else {}
+            oid = str(first.get("offerId") or "").strip()
+            if oid:
+                updated = self.update_offer(oid, payload)
+                if isinstance(updated, dict):
+                    updated = dict(updated)
+                    updated.setdefault("offerId", oid)
+                    updated["updated"] = True
+                    return updated
+                return {"offerId": oid, "updated": True}
+        created = self.create_offer(payload)
+        if isinstance(created, dict):
+            created = dict(created)
+            created["updated"] = False
+        return created
 
     def publish_offer(self, offer_id: str) -> dict[str, Any]:
-        """Sell publishOffer — refused unless live + sandbox-publish gates on."""
+        """POST publishOffer — refused unless EBAY_SANDBOX_PUBLISH_ENABLED (sandbox)."""
         self._assert_listings_allowed(publish=True)
-        _ = (offer_id, self._sell_base())
-        raise NotImplementedError("Sell publishOffer not implemented while gated.")
+        oid = str(offer_id or "").strip()
+        if not oid:
+            raise ValueError("offer_id is required")
+        result = self._sell_json(
+            "POST",
+            f"/inventory/v1/offer/{urllib.parse.quote(oid, safe='')}/publish",
+            body=None,
+            op="publishOffer",
+        )
+        return result if isinstance(result, dict) else {"ok": True, "offerId": oid}
 
     def sandbox_status(self) -> dict[str, Any]:
         """Safe status dict (no secrets) for CLI ebay-sandbox-status."""
@@ -695,9 +934,10 @@ class EbayClient:
             "sell_base": self._sell_base(),
             "listable_export_limit": self.settings.listable_export_limit,
             "note": (
-                "Sell inventory/offer/publish refuse while "
-                "LIVE_LISTINGS_ENABLED=false; publish also requires "
-                "EBAY_SANDBOX_PUBLISH_ENABLED=true."
+                "Sandbox inventory/offer allowed with user refresh token even when "
+                "LIVE_LISTINGS_ENABLED=false. Publish requires "
+                "EBAY_SANDBOX_PUBLISH_ENABLED=true. Production Sell requires "
+                "EBAY_PRODUCTION_ENABLED + LIVE_LISTINGS_ENABLED."
             ),
         }
 

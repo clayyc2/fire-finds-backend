@@ -23,7 +23,9 @@ from firefinds.services_queue import health_check, validate_eligible_queue
 
 
 def test_sell_wrappers_refuse_when_live_off(settings: Settings):
+    """Without refresh token + LIVE off → inventory/offer refuse; publish refuse."""
     client = EbayClient(settings)
+    assert client.user_refresh_token_present() is False
     try:
         client.create_offer({"sku": "X"})
         assert False, "expected refuse"

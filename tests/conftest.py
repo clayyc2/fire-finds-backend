@@ -40,14 +40,18 @@ def _clear_sensitive_env(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(exist_ok=True)
     return Settings(
         db_path=tmp_path / "test.db",
         actions_jsonl=tmp_path / "actions.jsonl",
-        secrets_dir=tmp_path / "secrets",
+        secrets_dir=secrets,
         randmar_client_id=None,
         randmar_client_secret_file=None,
         ebay_client_id=None,
         ebay_client_secret_file=None,
+        ebay_user_refresh_token_file=secrets / "ebay_user_refresh_token.txt",
+        ebay_env="sandbox",
         supplier_orders_enabled=False,
         live_listings_enabled=False,
         ebay_production_enabled=False,
