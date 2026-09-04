@@ -1,6 +1,6 @@
 # eBay unlock checklist
 
-> **Current stage (2026-09-04):** **Stage 0 ready** — RANDMAR_FIRST cohorts frozen (`20260903_1744`), SAFE_NATIONWIDE drafts + ORIGINAL_SUPPLIER creative present, quarantine excluded from live waves, gates **OFF**.  
+> **Current stage (2026-09-04):** **Stage 0 ready** — RANDMAR_FIRST cohorts frozen (`20260904_0140`; migrated from `20260903_1744`), SAFE_NATIONWIDE drafts + ORIGINAL_SUPPLIER creative present, quarantine excluded from live waves, gates **OFF**.  
 > **Blocked on:** eBay **developer application approval** → then §1 OAuth (client + user/refresh token). No sandbox publish until OAuth lands.  
 > Health: `ebay_credentials: false`; Browse competition stays provisional (`needs_official_ebay_validation`).
 
@@ -13,9 +13,9 @@ separate unlock and is out of scope here.
 
 ## 0. Preconditions (ready-to-list backlog)
 
-- [x] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized (`20260903_1744`, 254 SKUs)
-- [x] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave) (42 SKUs)
-- [x] `QUARANTINE_UNRESOLVED` excluded from any live wave (140 SKUs; recovery shortlist is ops-only)
+- [x] `RANDMAR_FIRST / SAFE_NATIONWIDE` queue frozen and prioritized (`20260904_0140`, 275 SKUs; prior `20260903_1744` had 254)
+- [x] `RANDMAR_FIRST / DESTINATION_SENSITIVE` kept **separate** (do not mix into nationwide wave) (46 SKUs on `20260904_0140`; was 42)
+- [x] `QUARANTINE_UNRESOLVED` excluded from any live wave (113 SKUs on `20260904_0140`; was 140; recovery shortlist is ops-only)
 - [x] `EBAY_DEMAND_FIRST` remains scaffold / provisional until official validation
 - [x] Drafts exist under `data/drafts/randmar_first/safe_nationwide/` (and
       `destination_sensitive/` only if intentionally included)

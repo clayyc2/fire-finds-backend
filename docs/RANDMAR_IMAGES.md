@@ -19,7 +19,7 @@ CLI (checkpointed, polite sleep, resume by default; downloads stills):
 
 ```bash
 cd /workspace/firefinds/backend
-PYTHONPATH=. python -m firefinds.cli.main backfill-images --snapshot-id 20260903_1744
+PYTHONPATH=. python -m firefinds.cli.main backfill-images --snapshot-id 20260904_0140
 ```
 
 Outputs:

@@ -10,7 +10,14 @@ Full draft (gitignored under `data/`):
 - `data/reports/sandbox_pilot_pack_draft.json`
 - Dry-run summary (2026-09-04): `data/reports/sandbox_pack_dry_runs_20260904.md` + `.json`
 
-## Final 5 SKUs (`SAFE_NATIONWIDE` / snapshot `20260903_1744`)
+## Cohort snapshot migration
+
+- **Live / current freeze:** `20260904_0140` — SAFE **275** / DEST **46** / QUARANTINE **113** (ranked finally-profitable **321**).
+- **Prior freeze (superseded for live ops):** `20260903_1744` — SAFE 254 / DEST 42 / QUARANTINE 140 (stale vs DB after quarantine requote + validate).
+- Refresh evidence: `data/reports/cohort_refresh_latest.md`.
+- Final 5 pilot SKUs below remain in SAFE on `20260904_0140`; dry-run artifacts were produced under the prior snapshot id.
+
+## Final 5 SKUs (`SAFE_NATIONWIDE` / originally snapshot `20260903_1744`; still SAFE on `20260904_0140`)
 
 | # | SKU | Dry-run | Artifact |
 |--:|-----|:-------:|----------|

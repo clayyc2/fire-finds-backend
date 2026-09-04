@@ -29,12 +29,12 @@ Thresholds come from Settings / env: `STOCK_BUFFER`,
 
 ```bash
 # via firefinds
-firefinds ops-exceptions scan --snapshot-id 20260903_1744
+firefinds ops-exceptions scan --snapshot-id 20260904_0140
 firefinds ops-exceptions list
 firefinds ops-exceptions rules
 
 # standalone console script
-ops-exceptions scan --snapshot-id 20260903_1744
+ops-exceptions scan --snapshot-id 20260904_0140
 ops-exceptions list --status open,paused
 ops-exceptions list --rule STOCK_LEQ_BUFFER --sku ABC
 ```
