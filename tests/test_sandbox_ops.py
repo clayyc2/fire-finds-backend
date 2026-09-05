@@ -16,7 +16,7 @@ def test_persist_privilege_does_not_guess(tmp_path):
 
 
 def test_fixture_lifecycle_routed_off(tmp_path):
-    fixture = Path("tests/fixtures/ebay_paid_order.json")
+    fixture = Path(__file__).resolve().parent / "fixtures" / "ebay_paid_order.json"
     report = fixture_lifecycle(Settings(), fixture, tmp_path)
     assert report["state"] == "ROUTED_OFF"
     assert report["process_called"] is False
