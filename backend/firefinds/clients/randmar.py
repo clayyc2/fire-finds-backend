@@ -515,20 +515,61 @@ class RandmarClient:
             "Randmar Manufacturer Product/Images returned unexpected payload shape"
         )
 
-    def place_order(self, *_args: Any, **_kwargs: Any) -> None:
+    def process_cart(self, cart_name: str, payload: dict[str, Any]) -> Any:
+        """Submit an already validated cart through Randmar's supported API.
 
-        """Order placement — gated OFF by default."""
+        This is the irreversible supplier-order boundary.  It is fail-closed in
+        dry-run, while the global kill switch is set, or while supplier orders
+        are disabled.  The caller supplies the Randmar-approved Process payload;
+        this client never invents shipping/payment fields.
+        """
         if not self.settings.supplier_orders_enabled:
             raise SupplierOrdersDisabled(
                 "SUPPLIER_ORDERS_ENABLED is false; refusing to place order"
             )
-        raise NotImplementedError(
-            "Live supplier orders are not implemented in this interim scaffold"
+        if self.settings.dry_run:
+            raise SupplierOrdersDisabled("DRY_RUN is true; refusing to place order")
+        if self.settings.global_kill_switch:
+            raise SupplierOrdersDisabled(
+                "GLOBAL_KILL_SWITCH is true; refusing to place order"
+            )
+        from urllib.parse import quote
+        url = self._reseller_path(f"/Cart/Process/{quote(cart_name, safe='')}")
+        return self._request_json(
+            "POST", url, data=json.dumps(payload).encode("utf-8"), timeout=120,
+            label="Randmar Cart/Process",
         )
 
-    def create_supplier_order(self, *_args: Any, **_kwargs: Any) -> None:
+    def get_order(self, order_number: str) -> Any:
+        """Read Randmar order status/tracking; never mutates supplier state."""
+        from urllib.parse import quote
+        url = self._reseller_path(f"/Order/{quote(order_number, safe='')}")
+        return self._request_json("GET", url, timeout=60, label="Randmar Order/GET")
+
+    def place_order(
+        self,
+        cart_name: str | None = None,
+        payload: dict[str, Any] | None = None,
+        **legacy: Any,
+    ) -> Any:
+        """Compatibility wrapper for the gated Process boundary.
+
+        Legacy ``sku``/``qty`` calls remain refused: an approved cart and the
+        exact Randmar Process payload are mandatory.
+        """
+        if cart_name is None or payload is None:
+            if not self.settings.supplier_orders_enabled:
+                raise SupplierOrdersDisabled(
+                    "SUPPLIER_ORDERS_ENABLED is false; refusing to place order"
+                )
+            raise NotImplementedError(
+                "Direct SKU ordering is unsupported; build and validate a cart first"
+            )
+        return self.process_cart(cart_name, payload)
+
+    def create_supplier_order(self, *args: Any, **kwargs: Any) -> Any:
         """Alias order method — same gate."""
-        return self.place_order(*_args, **_kwargs)
+        return self.place_order(*args, **kwargs)
 
 
 def extract_rebate_amount(instant_rebate: Any) -> float:

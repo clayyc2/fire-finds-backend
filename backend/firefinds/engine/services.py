@@ -62,14 +62,28 @@ class Repricer:
     def reprice(self, candidate: Candidate) -> Decision: return self.engine.evaluate(candidate)
 
 class OrderRouter:
-    def __init__(self, settings: Settings, audit: Audit): self.s=settings; self.audit=audit; self.seen=set()
+    def __init__(self, settings: Settings, audit: Audit, checkpoint: Path | None = None):
+        self.s=settings; self.audit=audit; self.checkpoint=checkpoint
+        self.seen=self._load()
+    def _load(self) -> set[str]:
+        if not self.checkpoint or not self.checkpoint.is_file(): return set()
+        try: return set(json.loads(self.checkpoint.read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError): return set()
+    def _save(self) -> None:
+        if not self.checkpoint: return
+        self.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        tmp=self.checkpoint.with_suffix(self.checkpoint.suffix+".tmp")
+        tmp.write_text(json.dumps(sorted(self.seen)), encoding="utf-8")
+        tmp.replace(self.checkpoint)
     def route(self, order: Mapping[str,Any], submit: Callable[[Mapping[str,Any]],Any]) -> str:
         key=str(order["order_id"])
-        if key in self.seen: return "duplicate"
-        self.seen.add(key)
+        if key in self.seen:
+            self.audit.write("order_duplicate", {"order_id":key}); return "duplicate"
         if self.s.dry_run or self.s.global_kill_switch or not self.s.supplier_orders_enabled:
             self.audit.write("order_dry_run", {"order_id":key}); return "dry-run"
-        result=submit(order); self.audit.write("order_submitted", {"order_id":key}); return str(result)
+        result=retry(lambda: submit(order), attempts=self.s.retry_max_attempts)
+        self.seen.add(key); self._save()
+        self.audit.write("order_submitted", {"order_id":key}); return str(result)
 
 class DiscoveryRefreshEngine:
     def __init__(self, importer: RandmarImporter, opportunities: OpportunityEngine, capacity: CapacityManager): self.i=importer; self.o=opportunities; self.c=capacity
