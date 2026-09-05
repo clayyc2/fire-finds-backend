@@ -1,4 +1,4 @@
-"""CLI helpers for sandbox reads and ingest dry-run."""
+"""CLI helpers for sandbox reads, ingest dry-run, and simulated E2E."""
 
 from __future__ import annotations
 
@@ -20,6 +20,21 @@ def cmd_ebay_sandbox_reads(_args: argparse.Namespace) -> int:
         return 0
     reads = report.get("reads") or {}
     return 0 if reads and all((v or {}).get("ok") for v in reads.values()) else 1
+
+
+def cmd_simulated_e2e(args: argparse.Namespace) -> int:
+    from firefinds.engine.simulated_e2e import run_simulated_e2e
+
+    settings = get_settings()
+    report = run_simulated_e2e(
+        settings=settings,
+        catalog_path=Path(args.catalog),
+        privilege_path=Path(args.privilege),
+        order_path=Path(args.order),
+        out_dir=Path(args.out),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    return 0
 
 
 def cmd_order_ingest_dry_run(args: argparse.Namespace) -> int:

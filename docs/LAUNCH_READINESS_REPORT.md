@@ -1,42 +1,38 @@
 # Launch readiness report (updated 2026-09-05)
 
-Generated: `2026-09-05`
-**Overall:** `NOT_READY_FOR_LIVE` (Sandbox Offer unblocked; live eBay user token not on this runner)
+**Overall:** `NOT_READY_FOR_LIVE`
 
-**Publish / supplier orders: OFF** — next irreversible step needs Clay go-live signature.
+Live-write gates remain OFF. Live Sandbox GET probes are pending credentials.
 
-## Authoritative freeze
-| Metric | Value |
-|--------|------:|
-| Snapshot | `20260904_1348` |
-| SAFE_NATIONWIDE | **127** |
-| DESTINATION_SENSITIVE | **25** |
-| QUARANTINE_UNRESOLVED | **85** |
-| Listable / ranked | **152 / 152** |
+## Implemented
+- Six deterministic modules.
+- Order ingest: `SEEN → MAPPED → ROUTED_OFF` (or `BLOCKED`).
+- Capacity metadata from privilege fixtures. Missing payload is not guessed.
+- Simulated E2E: catalog → score → cap select → ingest → performance record. No ProcessNew / publish / tracking POST.
+- Randmar V4 AddItem + ShippingMethods previously passed live; ProcessNew never called.
 
-## Pass/fail matrix (delta)
-| Item | Status | Evidence |
-|------|:------:|----------|
-| Sandbox Inventory Final 5 | **PASS 5/5** | `sandbox_inventory_offer_e2e_20260904T201135Z` |
-| Sandbox Offer Final 5 | **PASS 5/5** | same — real policy IDs `6248961000`/`6248962000`/`6248963000` |
-| Publish refuse | **PASS 5/5** | `EBAY_SANDBOX_PUBLISH_ENABLED=false` |
-| Business Policies | **PASS** | Account API `opt_in` `SELLING_POLICY_MANAGEMENT` + create policies (sandbox web sign-in broken) |
-| sellerRegistrationCompleted | **false** (non-blocking for Offer) | privilege still false; Offer succeeded anyway |
-| Sandbox web UI sign-in | **BROKEN** | `signin.sandbox.ebay.com` 403/Akamai |
-| Randmar OAuth/account read | **PASS** | Dedicated Order Router client; V4 account 200 |
-| Randmar cart AddItem | **PASS** | no-purchase probe 200/`true` |
-| Randmar shipping quote | **PASS** | 200 + carrier method IDs |
-| Randmar `ProcessNew` | **NOT RUN** | hard-gated |
-| eBay paid-order ingest | **CODE COMPLETE; LIVE READ PENDING** | `SEEN→MAPPED→ROUTED_OFF` simulated |
-| Unit suite on this runner | **181 passed** | pytest after ingest/capacity additions |
-| eBay Sandbox user token on this runner | **MISSING** | secret + refresh token not in this environment |
+## Connected to live APIs
+- Randmar account / AddItem / ShippingMethods (earlier probe).
+- eBay Browse / Sandbox Inventory+Offer on other hosts (publish refused).
 
-## Clay-only remaining
-1. Put Sandbox `EBAY_CLIENT_SECRET` and user refresh token in this runner secret store (mode 600). Do not paste into chat.
-2. Run read-only Sandbox GETs: privilege, orders, three policies, locations, payments program.
-3. Keep ingest at `ROUTED_OFF` until Clay approves ProcessNew.
-4. Sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` before any production publish or supplier order.
+## Still simulated
+- Paid-order ingest and fulfillment.
+- Capacity caps from fixture (`quantity=25`, `amount=5000 CAD`).
+- Tracking payload preparation.
 
-## Do not
-- Flip publish/orders gates without Clay signature
-- Place supplier Process orders
+## Pending (secret-dependent, not failed)
+- GET privilege, orders, three policies, inventory locations, payments program.
+
+## Test status
+184 passed on this runner after simulated E2E.
+
+## Queues (freeze `20260904_1348`)
+RANDMAR_FIRST SAFE 127 / DEST 25 / QUAR 85 / ranked 152. EBAY_DEMAND_FIRST scaffold.
+
+## Remaining blockers
+1. Sandbox Client Secret + refresh token in runner secret store.
+2. `firefinds ebay-sandbox-reads` then persist real sellingLimit.
+3. Clay signature before any live write.
+
+## Gates that stay false
+LIVE_LISTINGS_ENABLED, EBAY_SANDBOX_PUBLISH_ENABLED, EBAY_PRODUCTION_ENABLED, EBAY_TRACKING_UPDATES_ENABLED, SUPPLIER_ORDERS_ENABLED

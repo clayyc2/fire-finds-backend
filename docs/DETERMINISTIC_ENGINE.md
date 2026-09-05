@@ -1,45 +1,15 @@
 # Deterministic engine architecture
 
-The execution path is intentionally rules-based. AI/Grok may propose research
-signals, but those signals must enter as ordinary data and cannot publish,
-reprice, reserve capacity, or place an order.
+AI is not on the execution path. Live writes stay gated off.
 
-1. **Randmar Importer** normalizes catalog, price, stock and supported shipping
-   data into candidates.
-2. **Opportunity Engine** fail-closes on channel/MAP permission, unresolved
-   shipping, stock buffer, return risk, profit and margin floors; it computes a
-   reproducible target price and weighted rank.
-3. **Capacity Manager** selects ranked candidates while reserving configured
-   headroom below monthly item and value limits. When a privilege snapshot from
-   `GET /sell/account/v1/privilege` is present, live `sellingLimit.quantity` /
-   `sellingLimit.amount` intersect those caps. Missing privilege is not guessed.
-4. **Repricer** reruns the same gates whenever supplier price, stock, shipping,
-   or competition changes.
-5. **Order Router / ingest** records paid eBay orders as
-   `SEEN → MAPPED → ROUTED_OFF`. eBay `orderId` is the immutable key and the
-   Randmar `ProcessCartInput.PO`. Supplier `ProcessNew` and eBay
-   `createShippingFulfillment` stay refused while their gates are off.
-6. **Discovery/Refresh Engine** composes import, evaluation and capacity into a
-   repeatable refresh pass.
+1. Randmar Importer
+2. Opportunity Engine (fail-closed gates)
+3. Capacity Manager (privilege fixture or live GET; never guess)
+4. Repricer
+5. Order ingest `SEEN → MAPPED → ROUTED_OFF` (eBay orderId = Randmar PO)
+6. Discovery/Refresh
 
-Every boundary emits JSONL audit events. Retry helpers use bounded exponential
-backoff; idempotency keys are deterministic. Existing eBay and Randmar clients
-remain the only integration boundaries. Live publishing and supplier ordering
-remain disabled by default.
+## Simulated E2E
+`firefinds simulated-e2e` using tests/fixtures/{randmar_catalog_mini,ebay_privilege,ebay_paid_order}.json
 
-## Launch-readiness checklist
-
-- [x] Full unit suite passes in this runner (181 passed on 653b997 + ingest/capacity).
-- [ ] Recorded Randmar import/price/stock/shipping fixtures pass.
-- [ ] MAP and channel permissions are complete for every candidate.
-- [ ] All listable SKUs have resolved shipping and stock-buffer coverage.
-- [ ] eBay Sandbox inventory, offer, order and fulfillment lifecycle passes.
-- [ ] Duplicate webhook/order replay produces exactly one simulated order.
-- [ ] Rate-limit, timeout, retry exhaustion and checkpoint-resume tests pass.
-- [ ] Item and value capacity remain below configured headroom under replay.
-- [ ] Repricing never crosses MAP, margin or absolute-profit floors.
-- [ ] Kill-switch tests prove all external mutations are refused.
-- [ ] Audit log reconciles every decision and state transition.
-- [ ] Legal/compliance approval for brands, channels, returns and customer data.
-- [ ] Explicit human approval before enabling Sandbox publish.
-- [ ] Separate explicit human approval before any production listing or supplier order.
+Live Sandbox GETs: pending credentials. Write gates: off.
