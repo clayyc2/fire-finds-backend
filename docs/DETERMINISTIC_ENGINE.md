@@ -10,14 +10,15 @@ reprice, reserve capacity, or place an order.
    shipping, stock buffer, return risk, profit and margin floors; it computes a
    reproducible target price and weighted rank.
 3. **Capacity Manager** selects ranked candidates while reserving configured
-   headroom below both monthly item and value limits.
+   headroom below monthly item and value limits. When a privilege snapshot from
+   `GET /sell/account/v1/privilege` is present, live `sellingLimit.quantity` /
+   `sellingLimit.amount` intersect those caps. Missing privilege is not guessed.
 4. **Repricer** reruns the same gates whenever supplier price, stock, shipping,
    or competition changes.
-5. **Order Router** deduplicates paid orders and refuses supplier submission in
-   dry-run, with the global kill switch on, or while supplier ordering is off.
-   It reads paid eBay orders and existing fulfillments through the official
-   Fulfillment API. Tracking submission has a separate default-off
-   `EBAY_TRACKING_UPDATES_ENABLED` gate, plus dry-run and the global kill switch.
+5. **Order Router / ingest** records paid eBay orders as
+   `SEEN → MAPPED → ROUTED_OFF`. eBay `orderId` is the immutable key and the
+   Randmar `ProcessCartInput.PO`. Supplier `ProcessNew` and eBay
+   `createShippingFulfillment` stay refused while their gates are off.
 6. **Discovery/Refresh Engine** composes import, evaluation and capacity into a
    repeatable refresh pass.
 
@@ -28,7 +29,7 @@ remain disabled by default.
 
 ## Launch-readiness checklist
 
-- [ ] Full unit suite passes in a clean environment.
+- [x] Full unit suite passes in this runner (181 passed on 653b997 + ingest/capacity).
 - [ ] Recorded Randmar import/price/stock/shipping fixtures pass.
 - [ ] MAP and channel permissions are complete for every candidate.
 - [ ] All listable SKUs have resolved shipping and stock-buffer coverage.

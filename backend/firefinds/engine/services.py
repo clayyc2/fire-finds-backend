@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib, json, time
-from dataclasses import asdict
 from decimal import Decimal as D
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Any
@@ -47,10 +46,19 @@ class OpportunityEngine:
         return Decision(c.sku,True,"PASS",price,c.stock-self.s.stock_buffer,profit,margin,score)
 
 class CapacityManager:
-    def __init__(self, settings: Settings): self.s=settings
+    def __init__(self, settings: Settings, live_item_limit: int | None = None, live_value_limit_cad: float | None = None):
+        self.s=settings
+        self.live_item_limit=live_item_limit
+        self.live_value_limit_cad=live_value_limit_cad
     def select(self, decisions: Iterable[Decision], used_items=0, used_value=D("0")) -> list[Decision]:
-        item_cap=max(0,int(self.s.monthly_item_limit*(1-self.s.capacity_headroom_pct))-used_items) if self.s.monthly_item_limit else 10**9
-        value_cap=D(str(self.s.monthly_value_limit_cad))*(D("1")-D(str(self.s.capacity_headroom_pct)))-used_value if self.s.monthly_value_limit_cad else D("Infinity")
+        configured_items=self.s.monthly_item_limit
+        if self.live_item_limit is not None:
+            configured_items=self.live_item_limit if not configured_items else min(configured_items, self.live_item_limit)
+        item_cap=max(0,int(configured_items*(1-self.s.capacity_headroom_pct))-used_items) if configured_items else 10**9
+        configured_value=self.s.monthly_value_limit_cad
+        if self.live_value_limit_cad is not None:
+            configured_value=self.live_value_limit_cad if not configured_value else min(configured_value, self.live_value_limit_cad)
+        value_cap=D(str(configured_value))*(D("1")-D(str(self.s.capacity_headroom_pct)))-used_value if configured_value else D("Infinity")
         out=[]; value=D("0")
         for d in sorted((x for x in decisions if x.allowed),key=lambda x:(x.rank_score,x.sku),reverse=True):
             if len(out)>=item_cap or value+(d.price or D("0"))>value_cap: continue
@@ -67,7 +75,7 @@ class OrderRouter:
         self.seen=self._load()
     def _load(self) -> set[str]:
         if not self.checkpoint or not self.checkpoint.is_file(): return set()
-        try: return set(json.loads(self.checkpoint.read_text(encoding="utf-8")))
+        try: return set(json.loads(self.checkpoint.read_text(encoding="utf-8"))
         except (OSError, ValueError, TypeError): return set()
     def _save(self) -> None:
         if not self.checkpoint: return
