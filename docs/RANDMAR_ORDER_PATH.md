@@ -23,7 +23,10 @@ from:
 
 `POST /V4/Reseller/2WQN9V11G/Cart/AddItem/ff-ebay-FF-PROBE-DO-NOT-SUBMIT/CN0628C002/DefaultOpportunity?quantity=1`
 
-The response body was `true`. No `ProcessNew` request was made, so no supplier
-order or payment was created. This proves authentication plus the supported
-default-opportunity cart mutation; shipping quote, idempotent PO lookup,
-tracking retrieval, and eBay Sandbox fulfillment still need E2E evidence.
+The response body was `true`. The probe cart then returned HTTP 200 from
+`POST /Cart/ShippingMethods/{cartName}` and supplied actual carrier method IDs,
+verifying the shipping-quote request shape. No `ProcessNew` request was made, so
+no supplier order or payment was created. Authentication, the supported
+default-opportunity cart mutation, and shipping quote are now verified;
+idempotent PO lookup, tracking retrieval, and eBay Sandbox fulfillment still
+need E2E evidence.
