@@ -99,3 +99,31 @@ evidence. Exit 2 means an incomplete sweep or an order needing attention.
   the actual readiness evaluation and activation remain incomplete.
 
 Until these are complete, a published listing does not imply auto fulfillment.
+
+## Tax and paid-price validation follow-up
+
+The single-order GET now explicitly requests `fieldGroups=TAX_BREAKDOWN`.
+`fulfillment/order_money.py` normalizes a bounded CAD, single-line subset from
+the official [eBay Fulfillment schema](https://developer.ebay.com/api-docs/master/sell/fulfillment/openapi/3/sell_fulfillment_v1_oas3.json):
+
+- Item subtotal plus negative item discount gives item-only revenue. Buyer-paid
+  shipping, net of its separate discount, contributes to revenue but not MAP.
+- Tax is excluded from revenue. Matching tax entries in `taxes` and
+  `ebayCollectAndRemitTaxes` count once; conflicts, duplicate entries within one
+  representation, unsupported tax types and unreconciled gross totals hold.
+- MAP is checked against the discounted item-only unit price, not the delivered
+  unit revenue. The complete profit calculation uses order-level net revenue.
+- Fee evidence must cover at least accrued marketplace fees and the configured
+  fee estimate on the greater of reported fee basis or tax-inclusive gross.
+  Accrued fees and generic configured rates do not establish a final fee cap:
+  verified category, advertising, international and other relevant fee/tax
+  allowances remain the production evidence provider's responsibility.
+- Missing required amounts, explicit nulls, mixed currency, invalid signs,
+  fractional cents, refunds, nonzero adjustments/regulatory fees and special
+  program economics are held. Unsupported is not treated as zero cost.
+
+The worker independently recomputes revenue from the refreshed eBay order and
+rejects a provider's different revenue amount. This adds a safeguard, not live
+approval. Tax treatment of supplier charges, payment release, live evidence
+collection and deployment are still unresolved. **441 tests pass**, including
+regressions for tax-inflated revenue and shipping masking a MAP violation.

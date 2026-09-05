@@ -952,7 +952,7 @@ class EbayClient:
         if not oid:
             raise ValueError("order_id is required")
         result = self._sell_json(
-            "GET", f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}", op="getOrder"
+            "GET", f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}?fieldGroups=TAX_BREAKDOWN", op="getOrder"
         )
         return result if isinstance(result, dict) else {}
 

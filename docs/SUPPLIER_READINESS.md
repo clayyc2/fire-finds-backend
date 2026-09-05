@@ -65,6 +65,10 @@ they expire for live decisions and must be refreshed before purchases/listing.
       evidence per manufacturer/product; purchasing permission is insufficient.
 - [ ] Finish live buyer-specific checkout evidence collection, tax/fee/refund
       normalization and verified delivery-service promises.
+      The CAD single-line eBay revenue/tax normalizer is now implemented and
+      checked independently by the worker; supplier tax and final fee bounds,
+      service promises and the live collector still require completion. See
+      `FULFILLMENT_WORKER.md` (441-test follow-up).
 - [ ] Verify real supplier PO-not-found and positive reconciliation contracts;
       never retry an uncertain purchase merely because a lookup is empty.
 - [ ] Complete Sandbox/dry-run end-to-end acceptance with real response shapes.

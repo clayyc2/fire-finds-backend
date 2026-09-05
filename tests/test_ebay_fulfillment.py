@@ -17,7 +17,7 @@ def test_order_reads_use_official_fulfillment_paths(monkeypatch):
     client.get_order("12/34")
     assert calls[0][0] == "GET"
     assert calls[0][1].startswith("/fulfillment/v1/order?")
-    assert calls[1][1] == "/fulfillment/v1/order/12%2F34"
+    assert calls[1][1] == "/fulfillment/v1/order/12%2F34?fieldGroups=TAX_BREAKDOWN"
 
 
 def test_store_setup_reads_are_non_mutating(monkeypatch):

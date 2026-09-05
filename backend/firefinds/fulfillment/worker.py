@@ -23,6 +23,7 @@ from .tracking_delivery import TrackingDelivery
 from .spend_budget import DailySupplierBudget
 from .randmar_checkout import cart_name_for
 from .supplier_product import parse_supplier_product
+from .order_money import parse_order_money
 
 
 def order_fingerprint(order):
@@ -206,7 +207,15 @@ class FulfillmentWorker:
         values = (evidence.unit_sale_revenue, evidence.total_landed_cost, evidence.total_fee_upper_bound)
         if any(not isinstance(v, D) or not v.is_finite() or v < 0 for v in values):
             return "incomplete_order_costs"
-        revenue = evidence.unit_sale_revenue * record.qty
+        try:
+            paid = parse_order_money(order)
+        except ValueError:
+            return "order_money_unresolved"
+        if paid.unit_revenue != evidence.unit_sale_revenue:
+            return "sale_revenue_evidence_mismatch"
+        if paid.unit_item_price < candidate.map_price:
+            return "item_price_below_map"
+        revenue = paid.revenue
         if revenue <= 0 or candidate.shipping is None:
             return "incomplete_order_costs"
         if evidence.total_landed_cost < (candidate.cost + candidate.shipping) * record.qty:
@@ -215,7 +224,8 @@ class FulfillmentWorker:
         if (not isinstance(cash, D) or not cash.is_finite() or
                 cash < (candidate.cost + candidate.shipping) * record.qty or cash <= 0):
             return "supplier_cash_upper_bound_unresolved"
-        minimum_fees = revenue * D(str(self.s.ebay_fee_rate)) + D(str(self.s.ebay_fee_fixed))
+        minimum_fees = max(paid.accrued_marketplace_fees,
+            paid.fee_basis * D(str(self.s.ebay_fee_rate)) + D(str(self.s.ebay_fee_fixed)))
         if evidence.total_fee_upper_bound < minimum_fees:
             return "fees_understated"
         profit = revenue - evidence.total_landed_cost - evidence.total_fee_upper_bound

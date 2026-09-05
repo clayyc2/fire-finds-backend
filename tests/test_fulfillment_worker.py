@@ -76,6 +76,11 @@ def rig(tmp_path):
     order = json.loads((Path(__file__).parent / "fixtures/ebay_paid_order.json").read_text())
     order["shippingAddress"]["primaryPhone"] = {"phoneNumber": "5550100"}
     order["cancelStatus"] = {"cancelState": "NONE_REQUESTED"}
+    order["lineItems"][0]["lineItemCost"] = {"value": "80.00", "currency": "CAD"}
+    order["paymentSummary"] = {"refunds": []}
+    order["pricingSummary"] = {"priceSubtotal": {"value": "80.00", "currency": "CAD"},
+        "deliveryCost": {"value": "0.00", "currency": "CAD"},
+        "total": {"value": "80.00", "currency": "CAD"}}
     cart = {"Name": cart_name_for(order["orderId"]), "PartNumbers": [
         {"RandmarSKU": "R1", "AvailableToBuy": True, "OpportunityOnly": False,
          "Cart": {"Quantity": 1, "Price": 20}}]}
@@ -117,6 +122,41 @@ def test_actual_cart_projection_uses_explicit_product_permission(rig):
         del cart["PartNumbers"][0]["OpportunityOnly"]
     assert run(rig)["reason"] == "tracking_confirmation_pending"
     assert rig[3].posts == 1
+
+
+def test_shipping_cannot_disguise_a_below_map_item_price(rig):
+    worker, evidence, ebay, supplier = rig
+    ebay.order["lineItems"][0]["lineItemCost"]["value"] = "40.00"
+    ebay.order["pricingSummary"]["priceSubtotal"]["value"] = "40.00"
+    ebay.order["pricingSummary"]["deliveryCost"]["value"] = "40.00"
+    product = copy.deepcopy(evidence.supplier_product)
+    product["Distribution"]["MAP"] = 50
+    evidence = replace(evidence, order_fingerprint=order_fingerprint(ebay.order),
+        supplier=replace(evidence.supplier, map_price=D(50)), supplier_product=product)
+    result = worker.run_order(ebay.order["orderId"], lambda _: evidence)
+    assert result["reason"] == "item_price_below_map"
+    assert supplier.posts == 0
+
+
+def test_tax_cannot_inflate_evidence_revenue(rig):
+    worker, evidence, ebay, supplier = rig
+    ebay.order["pricingSummary"].update(tax={"value": "10.00", "currency": "CAD"},
+                                       total={"value": "90.00", "currency": "CAD"})
+    evidence = replace(evidence, order_fingerprint=order_fingerprint(ebay.order), unit_sale_revenue=D(90))
+    assert worker.run_order(ebay.order["orderId"], lambda _: evidence)["reason"] == "sale_revenue_evidence_mismatch"
+    assert supplier.posts == 0
+
+
+def test_tax_inclusive_fee_basis_and_actual_fees_enforced(rig):
+    worker, evidence, ebay, supplier = rig
+    ebay.order["totalMarketplaceFee"] = {"value": "13.00", "currency": "CAD"}
+    evidence = replace(evidence, order_fingerprint=order_fingerprint(ebay.order))
+    assert worker.run_order(ebay.order["orderId"], lambda _: evidence)["reason"] == "fees_understated"
+    del ebay.order["totalMarketplaceFee"]
+    ebay.order["totalFeeBasisAmount"] = {"value": "100.00", "currency": "CAD"}
+    evidence = replace(evidence, order_fingerprint=order_fingerprint(ebay.order))
+    assert worker.run_order(ebay.order["orderId"], lambda _: evidence)["reason"] == "fees_understated"
+    assert supplier.posts == 0
 
 
 @pytest.mark.parametrize("kind", ["missing", "restricted", "opportunity", "cost", "map", "stock", "cart_denied"])
