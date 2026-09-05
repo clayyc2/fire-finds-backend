@@ -1,7 +1,7 @@
-# Launch readiness report (updated 20260905_0130)
+# Launch readiness report (updated 2026-09-05)
 
 Generated: `2026-09-05`
-**Overall:** `NOT_READY_FOR_LIVE` (Sandbox Offer unblocked; order lifecycle incomplete)
+**Overall:** `NOT_READY_FOR_LIVE` (Sandbox Offer unblocked; live eBay user token not on this runner)
 
 **Publish / supplier orders: OFF** — next irreversible step needs Clay go-live signature.
 
@@ -22,27 +22,20 @@ Generated: `2026-09-05`
 | Publish refuse | **PASS 5/5** | `EBAY_SANDBOX_PUBLISH_ENABLED=false` |
 | Business Policies | **PASS** | Account API `opt_in` `SELLING_POLICY_MANAGEMENT` + create policies (sandbox web sign-in broken) |
 | sellerRegistrationCompleted | **false** (non-blocking for Offer) | privilege still false; Offer succeeded anyway |
-| Sandbox web UI sign-in | **BROKEN** | `signin.sandbox.ebay.com` 403/Akamai; `sandbox.ebay.com` → splash challenge — use API path |
-| Randmar OAuth/account read | **PASS** | Dedicated `Fire Finds Order Router` client; authenticated V4 account request returned 200 |
-| Randmar cart AddItem | **PASS** | Marked no-purchase probe returned 200/`true` |
-| Randmar shipping quote | **PASS** | Probe cart returned 200 and supported carrier method IDs |
-| Randmar `ProcessNew` | **NOT RUN** | Intentionally hard-gated; no supplier order or payment created |
-| Randmar PO dedupe/tracking | **PENDING E2E** | Client methods implemented; authenticated lifecycle evidence still required |
-| eBay paid-order ingest/fulfillment | **IMPLEMENTED; PENDING E2E** | Official order, privilege, policy, location, payment-program, existing-fulfillment, and tracking wrappers added; tracking defaults OFF |
+| Sandbox web UI sign-in | **BROKEN** | `signin.sandbox.ebay.com` 403/Akamai |
+| Randmar OAuth/account read | **PASS** | Dedicated Order Router client; V4 account 200 |
+| Randmar cart AddItem | **PASS** | no-purchase probe 200/`true` |
+| Randmar shipping quote | **PASS** | 200 + carrier method IDs |
+| Randmar `ProcessNew` | **NOT RUN** | hard-gated |
+| eBay paid-order ingest | **CODE COMPLETE; LIVE READ PENDING** | `SEEN→MAPPED→ROUTED_OFF` simulated |
+| Unit suite on this runner | **181 passed** | pytest after ingest/capacity additions |
+| eBay Sandbox user token on this runner | **MISSING** | secret + refresh token not in this environment |
 
 ## Clay-only remaining
-1. Complete the no-purchase Randmar PO lookup and shipment-read probes.
-2. Run read-only eBay Sandbox probes for privileges, empty orders, policies,
-   locations, existing fulfillments, and payments status.
-3. Complete eBay Sandbox paid-order ingest, supplier-order simulation, tracking,
-   fulfillment update, duplicate replay, retry, and checkpoint-resume tests.
-4. Re-run the full unit suite in a clean environment.
-5. **Explicit go-live authorization** before any production publish or supplier
-   order — sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` only after the lifecycle
-   above passes.
-6. Optional: Production keys-page visual confirm if still desired (API Browse already PASS).
-7. Sandbox website seller registration remains blocked by eBay SORRY/Akamai —
-   **not required** for Offer E2E anymore.
+1. Put Sandbox `EBAY_CLIENT_SECRET` and user refresh token in this runner secret store (mode 600). Do not paste into chat.
+2. Run read-only Sandbox GETs: privilege, orders, three policies, locations, payments program.
+3. Keep ingest at `ROUTED_OFF` until Clay approves ProcessNew.
+4. Sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` before any production publish or supplier order.
 
 ## Do not
 - Flip publish/orders gates without Clay signature
