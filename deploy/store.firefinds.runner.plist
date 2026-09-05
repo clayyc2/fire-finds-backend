@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>store.firefinds.runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/claytonc222/Documents/Codex/2026-09-04/referenced-chatgpt-conversation-this-is-an-6/fire-finds-backend/scripts/run_operations.py</string>
+    <string>--secrets-dir</string><string>secrets</string>
+    <string>--mapping</string><string>data/fulfillment-readiness/verified_sku_mapping.json</string>
+    <string>--purchase-audit</string><string>data/supplier-readiness/listed-buyability.json</string>
+    <string>--out</string><string>data/operations</string>
+    <string>--environment</string><string>production</string>
+    <string>--reseller-id</string><string>2WQN9V11G</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/claytonc222/Documents/Codex/2026-09-04/referenced-chatgpt-conversation-this-is-an-6/fire-finds-backend</string>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Umask</key><integer>63</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/claytonc222/Documents/Codex/2026-09-04/referenced-chatgpt-conversation-this-is-an-6/fire-finds-backend/data/operations/runner.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/claytonc222/Documents/Codex/2026-09-04/referenced-chatgpt-conversation-this-is-an-6/fire-finds-backend/data/operations/runner.stderr.log</string>
+</dict>
+</plist>

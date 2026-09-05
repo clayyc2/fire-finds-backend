@@ -80,4 +80,13 @@ supplier eligibility, checkout costs or a working fulfillment deployment, and
 does not authorize false product/shipping claims or acceptance of new supplier
 terms. At this checkpoint all 4,503 screening candidates lack finalized
 listing prices and the automatic fulfillment deployment remains incomplete.
-No actual publication has occurred.
+No actual publication occurred at that checkpoint.
+
+The next instruction explicitly authorizes conservative high-end shipping
+estimates. Starting prices are now set for all 4,503 candidates using the
+configurable estimates in `LOCAL_RUNNER.md`; their costs are not relabeled as
+verified supplier quotes. Profit protection is conditional on actual costs
+staying within those allowances. Automatic purchasing/deployment remains
+unfinished, and no live listings have been added. The user also explicitly
+approved the Mac background runner installation; the system still did not grant
+the exact required filesystem write, so the scheduler has not been installed.

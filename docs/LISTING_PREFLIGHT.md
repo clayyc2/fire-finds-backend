@@ -11,7 +11,8 @@ checks, not fulfillment, channel, shipping or profit safeguards.
 - **Zero fully publication-ready products.** Candidate does not mean qualified.
 - Default initial quantity: one per eligible SKU, with a two-unit supplier
   stock buffer. Price must meet 18% margin, C$8 profit and MAP after complete
-  costs. No fabricated final prices were assigned.
+  costs. Initially prices were unset. The follow-up below now assigns concrete
+  starting prices using explicitly labeled conservative estimates.
 - First five candidates: Brother `5090907`, `5090692`, `5090666`, then Canon
   `CANCLI281B`, `CANCLI281C`. Fresh Product GETs at approximately **21:16 UTC**
   confirmed all five buyable, not opportunity-only, with stock above buffer.
@@ -56,3 +57,23 @@ Private evidence (Git-ignored): `data/listing-preflight/` including
 `opinion-first-quote/` and `opinion-remaining-capacity.json`.
 See [operating policy](OPERATING_POLICY.md), [queue runbook](CATALOGUE_QUEUE.md)
 and [supplier readiness](SUPPLIER_READINESS.md).
+
+## Conservative-pricing and runner follow-up
+
+The user explicitly authorized high shipping estimates rather than waiting for
+quotes. All **4,503** screening candidates now have concrete item prices plus
+separate shipping charges, using C$49.95 for known <=2 lb weight or C$99.95 for
+heavier/unknown weight, with configurable supplier-cost, fee and return reserves.
+The 18%/C$8 floors apply after those estimates, and MAP applies to item price.
+These estimates are not verified shipping maxima or guaranteed profits.
+
+Private output: `data/listing-preflight/priced-catalogue-queue.json`. A successful
+foreground production runner cycle also refreshed supplier data and generated
+`data/operations/starting-prices.json`, with zero recent orders returned.
+No new publication or supplier purchase occurred. **492 tests pass.**
+
+The background scheduler is prepared but NOT installed: the system returned no
+filesystem grant even after the user explicitly approved the exact LaunchAgent.
+Automatic purchasing remains unimplemented in this deployed-profile candidate;
+it runs the existing worker with read-only adapters and reports held orders.
+See [local runner](LOCAL_RUNNER.md) for exact state, assumptions and limits.

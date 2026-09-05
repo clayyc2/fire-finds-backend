@@ -138,6 +138,13 @@ class Settings:
     dry_run: bool = True
     market_research_enabled: bool = False
     initial_listing_quantity: int = 1
+    estimated_shipping_small_cad: float = 49.95
+    estimated_shipping_other_cad: float = 99.95
+    supplier_cost_contingency_pct: float = 0.20
+    estimated_fee_rate: float = 0.20
+    fee_tax_basis_contingency_pct: float = 0.20
+    return_reserve_pct: float = 0.05
+    estimated_fee_fixed_cad: float = 0.50
     global_kill_switch: bool = True
     target_profit_pct: float = 0.18
     competitor_undercut_cad: float = 0.01
@@ -236,6 +243,13 @@ class Settings:
             dry_run=_env_bool("DRY_RUN", True),
             market_research_enabled=_env_bool("MARKET_RESEARCH_ENABLED", False),
             initial_listing_quantity=_env_int("INITIAL_LISTING_QUANTITY", 1),
+            estimated_shipping_small_cad=_env_float("ESTIMATED_SHIPPING_SMALL_CAD", 49.95),
+            estimated_shipping_other_cad=_env_float("ESTIMATED_SHIPPING_OTHER_CAD", 99.95),
+            supplier_cost_contingency_pct=_env_float("SUPPLIER_COST_CONTINGENCY_PCT", 0.20),
+            estimated_fee_rate=_env_float("ESTIMATED_FEE_RATE", 0.20),
+            fee_tax_basis_contingency_pct=_env_float("FEE_TAX_BASIS_CONTINGENCY_PCT", 0.20),
+            return_reserve_pct=_env_float("RETURN_RESERVE_PCT", 0.05),
+            estimated_fee_fixed_cad=_env_float("ESTIMATED_FEE_FIXED_CAD", 0.50),
             global_kill_switch=_env_bool("GLOBAL_KILL_SWITCH", True),
             target_profit_pct=_env_float("TARGET_PROFIT_PCT", 0.18),
             competitor_undercut_cad=_env_float("COMPETITOR_UNDERCUT_CAD", 0.01),
