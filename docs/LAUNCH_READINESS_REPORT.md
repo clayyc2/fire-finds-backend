@@ -1,7 +1,7 @@
-# Launch readiness report (updated 20260904_2012)
+# Launch readiness report (updated 20260905_0130)
 
-Generated: `2026-09-04T20:12:01.749554+00:00`
-**Overall:** `READY_FOR_CLAY_AUTH` (Sandbox Offer **unblocked**)
+Generated: `2026-09-05`
+**Overall:** `NOT_READY_FOR_LIVE` (Sandbox Offer unblocked; order lifecycle incomplete)
 
 **Publish / supplier orders: OFF** — next irreversible step needs Clay go-live signature.
 
@@ -23,11 +23,24 @@ Generated: `2026-09-04T20:12:01.749554+00:00`
 | Business Policies | **PASS** | Account API `opt_in` `SELLING_POLICY_MANAGEMENT` + create policies (sandbox web sign-in broken) |
 | sellerRegistrationCompleted | **false** (non-blocking for Offer) | privilege still false; Offer succeeded anyway |
 | Sandbox web UI sign-in | **BROKEN** | `signin.sandbox.ebay.com` 403/Akamai; `sandbox.ebay.com` → splash challenge — use API path |
+| Randmar OAuth/account read | **PASS** | Dedicated `Fire Finds Order Router` client; authenticated V4 account request returned 200 |
+| Randmar cart AddItem | **PASS** | Marked no-purchase probe returned 200/`true` |
+| Randmar shipping quote | **PASS** | Probe cart returned 200 and supported carrier method IDs |
+| Randmar `ProcessNew` | **NOT RUN** | Intentionally hard-gated; no supplier order or payment created |
+| Randmar PO dedupe/tracking | **PENDING E2E** | Client methods implemented; authenticated lifecycle evidence still required |
+| eBay paid-order ingest/fulfillment | **PENDING E2E** | Must pass Sandbox order, tracking, and replay/idempotency lifecycle |
 
 ## Clay-only remaining
-1. **Explicit go-live authorization** before any publish/orders — sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` (Phase A/B sandbox publish optional; Phase C production live).
-2. Optional: Production keys-page visual confirm if still desired (API Browse already PASS).
-3. Sandbox website seller registration still blocked by eBay SORRY/Akamai — **not required** for Offer E2E anymore.
+1. Complete the no-purchase Randmar PO lookup and shipment-read probes.
+2. Complete eBay Sandbox paid-order ingest, supplier-order simulation, tracking,
+   fulfillment update, duplicate replay, retry, and checkpoint-resume tests.
+3. Re-run the full unit suite in a clean environment.
+4. **Explicit go-live authorization** before any production publish or supplier
+   order — sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` only after the lifecycle
+   above passes.
+5. Optional: Production keys-page visual confirm if still desired (API Browse already PASS).
+6. Sandbox website seller registration remains blocked by eBay SORRY/Akamai —
+   **not required** for Offer E2E anymore.
 
 ## Do not
 - Flip publish/orders gates without Clay signature
