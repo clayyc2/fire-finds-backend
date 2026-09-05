@@ -14,3 +14,16 @@ off until the dry-run lifecycle and a separately approved controlled live test p
    PO or order number and send real tracking through eBay's Fulfillment API.
 
 The safe probe implements steps 1–5 and has no code path that invokes step 6.
+
+## Verified integration status
+
+On 2026-09-05, the dedicated `Fire Finds Order Router` OAuth client was
+authenticated against Randmar V4 and a no-purchase cart probe returned HTTP 200
+from:
+
+`POST /V4/Reseller/2WQN9V11G/Cart/AddItem/ff-ebay-FF-PROBE-DO-NOT-SUBMIT/CN0628C002/DefaultOpportunity?quantity=1`
+
+The response body was `true`. No `ProcessNew` request was made, so no supplier
+order or payment was created. This proves authentication plus the supported
+default-opportunity cart mutation; shipping quote, idempotent PO lookup,
+tracking retrieval, and eBay Sandbox fulfillment still need E2E evidence.
