@@ -1,0 +1,18 @@
+{
+  "orderId": "12-FF-DRY-RUN",
+  "orderFulfillmentStatus": "NOT_STARTED",
+  "orderPaymentStatus": "PAID",
+  "lineItems": [
+    {"sku": "0ZD3500TRC638MEF8GM5", "quantity": 1, "lineItemId": "1"}
+  ],
+  "shippingAddress": {
+    "fullName": "Sandbox Buyer",
+    "contactAddress": {
+      "addressLine1": "1 Yonge Street",
+      "city": "Toronto",
+      "stateOrProvince": "ON",
+      "postalCode": "M5E1E5",
+      "countryCode": "CA"
+    }
+  }
+}
