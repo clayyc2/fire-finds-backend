@@ -1,0 +1,24 @@
+[
+  {
+    "sku": "0ZD3500TRC638MEF8GM5",
+    "cost": "42.00",
+    "shipping": "12.50",
+    "stock": 14,
+    "map": "79.99",
+    "competitor_price": "89.99",
+    "channel_allowed": true,
+    "return_risk": false,
+    "demand_score": "8",
+    "competition_score": "3"
+  },
+  {
+    "sku": "UNSAFE-LOW-STOCK",
+    "cost": "10.00",
+    "shipping": "8.00",
+    "stock": 1,
+    "channel_allowed": true,
+    "return_risk": false,
+    "demand_score": "1",
+    "competition_score": "1"
+  }
+]

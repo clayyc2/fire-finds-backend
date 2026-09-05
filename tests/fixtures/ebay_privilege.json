@@ -1,0 +1,7 @@
+{
+  "sellerRegistrationCompleted": false,
+  "sellingLimit": {
+    "amount": {"value": "5000.00", "currency": "CAD"},
+    "quantity": 25
+  }
+}
