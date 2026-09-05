@@ -84,7 +84,11 @@ def rig(tmp_path):
         D(80), "GROUND", cart, channel_evidence="fixture-approved", returns_evidence="fixture-approved",
         map_evidence="fixture-none", shipping_service_evidence="fixture-on-time", economics_evidence="fixture-costs",
         opportunity_only=False, currency="CAD", total_landed_cost=D(35), total_fee_upper_bound=D(12),
-        catalog_observed_at=1000, supplier_charge_upper_bound_cad=D(35))
+        catalog_observed_at=1000, supplier_charge_upper_bound_cad=D(35),
+        supplier_product={"RandmarSKU": "R1", "AvailableToBuy": True, "OpportunityOnly": False,
+            "Distribution": {"Currency": "CAD", "Price": 20, "MAP": 0, "Inventory": [
+                {"RandmarSKU": "R1", "WarehouseId": "EDM", "AvailableQuantity": 10,
+                 "Status": "Active", "Country": "CA"}]}})
     ebay, supplier = Ebay(order), Supplier(order, copy.deepcopy(cart))
     settings = replace(Settings(), dry_run=False, global_kill_switch=False,
                        supplier_orders_enabled=True, ebay_tracking_updates_enabled=True)
@@ -105,6 +109,30 @@ def test_connected_lifecycle_and_replay(rig):
     assert run(rig)["state"] == "FULFILLED"
     assert run(rig)["state"] == "FULFILLED"
     assert rig[2].posts == rig[3].posts == 1
+
+
+def test_actual_cart_projection_uses_explicit_product_permission(rig):
+    for cart in (rig[1].cart, rig[3].cart):
+        del cart["PartNumbers"][0]["AvailableToBuy"]
+        del cart["PartNumbers"][0]["OpportunityOnly"]
+    assert run(rig)["reason"] == "tracking_confirmation_pending"
+    assert rig[3].posts == 1
+
+
+@pytest.mark.parametrize("kind", ["missing", "restricted", "opportunity", "cost", "map", "stock", "cart_denied"])
+def test_product_and_cart_permissions_remain_fail_closed(rig, kind):
+    worker, evidence, ebay, supplier = rig
+    product = copy.deepcopy(evidence.supplier_product)
+    if kind == "missing": product = None
+    elif kind == "restricted": product["AvailableToBuy"] = False
+    elif kind == "opportunity": product["OpportunityOnly"] = True
+    elif kind == "cost": product["Distribution"]["Price"] = 21
+    elif kind == "map": product["Distribution"]["MAP"] = 81
+    elif kind == "stock": product["Distribution"]["Inventory"][0]["AvailableQuantity"] = 0
+    elif kind == "cart_denied": evidence.cart["PartNumbers"][0]["AvailableToBuy"] = False
+    result = worker.run_order(ebay.order["orderId"], lambda _: replace(evidence, supplier_product=product))
+    assert result["state"] == "HELD"
+    assert supplier.posts == ebay.posts == 0
 
 
 @pytest.mark.parametrize("field,value", [

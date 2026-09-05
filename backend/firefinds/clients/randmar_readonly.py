@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 
 from firefinds.config import Settings
 from .randmar import RandmarClient, SupplierOrdersDisabled
@@ -29,6 +29,19 @@ class ReadOnlyRandmarClient(RandmarClient):
         return (self._read_named_private("randmar_client_id.txt"),
                 self._read_named_private("randmar_api_key.txt"))
 
+    def get_product(self, sku):
+        if not isinstance(sku, str) or not sku.strip():
+            raise ValueError("Explicit supplier SKU required")
+        return self._request_json("GET", self._reseller_path("/Product/" + quote(sku, safe="")))
+
+    def get_manufacturer(self, manufacturer_id):
+        if not isinstance(manufacturer_id, str) or not manufacturer_id.strip():
+            raise ValueError("Explicit manufacturer required")
+        return self._request_json("GET", self._reseller_path("/Manufacturer/" + quote(manufacturer_id, safe="")))
+
+    def get_account(self):
+        return self._request_json("GET", self._reseller_path("/Account/General"))
+
     def _request_json(self, method, url, **kwargs):
         parsed = urlsplit(url)
         base = self._reseller_path("").rstrip("/")
@@ -36,8 +49,10 @@ class ReadOnlyRandmarClient(RandmarClient):
             method == "POST" and parsed.query == "" and url == base + "/Report/Products/JSON"
         ) or (
             method == "GET" and parsed.query == "" and
-            (url in {base + "/Products/InstantRebates", base + "/Orders/Shipments"}
-             or url.startswith(base + "/Order/"))
+            (url in {base + "/Products/InstantRebates", base + "/Orders/Shipments", base + "/Account/General"}
+             or url.startswith(base + "/Order/")
+             or any(url.startswith(base + prefix) and "/" not in url[len(base + prefix):]
+                    for prefix in ("/Product/", "/Manufacturer/")))
         )
         if not allowed:
             raise SupplierOrdersDisabled("Read-only supplier client refuses this operation")

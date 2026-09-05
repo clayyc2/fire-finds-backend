@@ -22,6 +22,7 @@ from .tracking import prepare_tracking
 from .tracking_delivery import TrackingDelivery
 from .spend_budget import DailySupplierBudget
 from .randmar_checkout import cart_name_for
+from .supplier_product import parse_supplier_product
 
 
 def order_fingerprint(order):
@@ -56,6 +57,8 @@ class CheckoutEvidence:
     total_fee_upper_bound: D | None = None
     catalog_observed_at: float | None = None
     supplier_charge_upper_bound_cad: D | None = None
+    # Full fresh Product response: actual cart projections omit purchase flags.
+    supplier_product: dict | None = field(default=None, repr=False)
 
 
 class FulfillmentWorker:
@@ -178,6 +181,13 @@ class FulfillmentWorker:
         candidate = evidence.supplier
         if candidate.sku != self.mapping[record.sku] or candidate.map_price is None:
             return "supplier_or_map_unresolved"
+        try:
+            product = parse_supplier_product(evidence.supplier_product, candidate.sku)
+        except ValueError:
+            return "supplier_product_purchase_evidence_unresolved"
+        if (product.cost != candidate.cost or product.map_price != candidate.map_price or
+                type(candidate.stock) is not int or not 0 <= candidate.stock <= product.stock):
+            return "supplier_product_cost_map_or_stock_mismatch"
         cart = evidence.cart
         if not isinstance(cart, dict) or cart.get("Name") != cart_name_for(record.ebay_order_id):
             return "cart_identity_mismatch"
@@ -185,7 +195,8 @@ class FulfillmentWorker:
         if not isinstance(parts, list) or len(parts) != 1 or not isinstance(parts[0], dict):
             return "cart_must_contain_exact_order_line"
         part = parts[0]
-        if part.get("AvailableToBuy") is not True or part.get("OpportunityOnly") is not False:
+        if (("AvailableToBuy" in part and part["AvailableToBuy"] is not True) or
+                ("OpportunityOnly" in part and part["OpportunityOnly"] is not False)):
             return "cart_purchase_permission_unresolved"
         info = part.get("Cart")
         if (not isinstance(info, dict) or part.get("RandmarSKU") != candidate.sku or

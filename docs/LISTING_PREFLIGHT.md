@@ -3,6 +3,10 @@
 **No new listings published.** The request authorizes listing qualified items;
 it does not supply missing fulfillment, channel, economics or demand evidence.
 
+Latest follow-up: [supplier readiness](SUPPLIER_READINESS.md) records actual
+Product/cart/shipping checks, the completed business contact profile, and two
+existing HP SKUs that Randmar does not allow this account to purchase.
+
 Independent production reads at approximately 20:13–20:15 UTC:
 
 - Account cap: 5,000 units / CAD 69,515.02.
