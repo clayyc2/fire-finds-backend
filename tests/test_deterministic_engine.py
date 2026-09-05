@@ -12,9 +12,9 @@ def test_profit_and_stock_are_deterministic():
     assert d.allowed and d.quantity==8 and d.profit >= D("8")
 
 def test_capacity_keeps_headroom():
-    s=Settings(monthly_item_limit=2,capacity_headroom_pct=0)
+    s=Settings(monthly_item_limit=2,monthly_value_limit_cad=1000,capacity_headroom_pct=0)
     e=OpportunityEngine(s); ds=[e.evaluate(Candidate(str(i),D("20"),D("10"),10,channel_allowed=True,demand_score=D(i))) for i in range(3)]
-    assert len(CapacityManager(s).select(ds))==2
+    assert sum(d.quantity for d in CapacityManager(s).select(ds))==2
 
 def test_orders_never_submit_by_default(tmp_path):
     called=[]; r=OrderRouter(Settings(),Audit(tmp_path/"audit.jsonl"))

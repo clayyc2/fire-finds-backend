@@ -7,20 +7,20 @@ Idempotency key = eBay orderId (also Randmar ProcessCartInput.PO).
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
 from firefinds.config import Settings
 from firefinds.engine.services import Audit
+from .storage import atomic_json, checkpoint_lock
 
 SEEN = "SEEN"
 MAPPED = "MAPPED"
 ROUTED_OFF = "ROUTED_OFF"
 BLOCKED = "BLOCKED"
 
-TERMINAL = frozenset({ROUTED_OFF, BLOCKED})
+TERMINAL = frozenset({ROUTED_OFF})
 
 
 @dataclass
@@ -52,18 +52,22 @@ def map_ebay_order(order: Mapping[str, Any]) -> IngestRecord:
     oid = str(order.get("orderId") or order.get("order_id") or "").strip()
     if not oid:
         return IngestRecord("", BLOCKED, reason="missing_order_id")
-    line = None
+    if order.get("orderPaymentStatus") != "PAID":
+        return IngestRecord(oid, BLOCKED, reason="payment_not_confirmed")
+    cancel = order.get("cancelStatus") or {}
+    if not isinstance(cancel, dict) or cancel.get("cancelState", "NONE_REQUESTED") != "NONE_REQUESTED":
+        return IngestRecord(oid, BLOCKED, reason="cancellation_pending_or_complete")
+    if order.get("orderFulfillmentStatus") != "NOT_STARTED":
+        return IngestRecord(oid, BLOCKED, reason="fulfillment_not_new")
     items = order.get("lineItems") or order.get("line_items") or []
-    if isinstance(items, list) and items and isinstance(items[0], dict):
-        line = items[0]
-    sku = None
-    qty = 1
-    if line:
-        sku = str(line.get("sku") or line.get("legacyItemId") or line.get("lineItemId") or "") or None
-        try:
-            qty = int(line.get("quantity") or 1)
-        except (TypeError, ValueError):
-            qty = 1
+    if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+        return IngestRecord(oid, BLOCKED, reason="single_line_order_required")
+    line = items[0]
+    # A listing ID/line-item ID is never a Randmar SKU.
+    sku = str(line.get("sku") or "").strip() or None
+    qty = line.get("quantity")
+    if type(qty) is not int or qty <= 0:
+        return IngestRecord(oid, BLOCKED, reason="invalid_quantity")
     ship = order.get("shippingAddress") or order.get("fulfillmentStartInstructions") or {}
     if isinstance(ship, list) and ship:
         ship = (ship[0] or {}).get("shippingStep", {}).get("shipTo", {}) if isinstance(ship[0], dict) else {}
@@ -77,11 +81,14 @@ def map_ebay_order(order: Mapping[str, Any]) -> IngestRecord:
         "City": str(contact.get("city") or ""),
         "Province": str(contact.get("stateOrProvince") or contact.get("Province") or ""),
         "PostalCode": str(contact.get("postalCode") or ""),
-        "Country": str(contact.get("countryCode") or "CA"),
-        "ContactPhone": str(ship.get("primaryPhone", {}).get("phoneNumber") if isinstance(ship.get("primaryPhone"), dict) else ""),
+        "Country": str(contact.get("countryCode") or ""),
+        "ContactPhone": str((ship.get("primaryPhone", {}).get("phoneNumber") or "") if isinstance(ship.get("primaryPhone"), dict) else ""),
     }
     if not sku:
         return IngestRecord(oid, BLOCKED, reason="unmapped_sku", ship_to=ship_to)
+    if any(not ship_to[field].strip() for field in
+           ("Name", "Street1", "City", "Province", "PostalCode", "Country")):
+        return IngestRecord(oid, BLOCKED, reason="incomplete_shipping_address", sku=sku, qty=qty)
     return IngestRecord(oid, MAPPED, sku=sku, qty=qty, ship_to=ship_to)
 
 
@@ -95,10 +102,9 @@ class OrderIngest:
     def _load(self) -> dict[str, IngestRecord]:
         if not self.store.is_file():
             return {}
-        try:
-            raw = json.loads(self.store.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
-            return {}
+        raw = json.loads(self.store.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("invalid order ingest checkpoint")
         out: dict[str, IngestRecord] = {}
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -109,12 +115,14 @@ class OrderIngest:
     def _save(self) -> None:
         self.store.parent.mkdir(parents=True, exist_ok=True)
         payload = {k: r.as_dict() for k, r in self.records.items()}
-        tmp = self.store.with_suffix(self.store.suffix + ".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self.store)
-        os.chmod(self.store, 0o600)
+        atomic_json(self.store, payload)
 
     def ingest(self, order: Mapping[str, Any]) -> IngestRecord:
+        with checkpoint_lock(self.store):
+            self.records = self._load()
+            return self._ingest_locked(order)
+
+    def _ingest_locked(self, order: Mapping[str, Any]) -> IngestRecord:
         oid = str(order.get("orderId") or order.get("order_id") or "").strip()
         if not oid:
             rec = IngestRecord("", BLOCKED, reason="missing_order_id")

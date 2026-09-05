@@ -20,7 +20,7 @@ class SellingLimitSnapshot:
 
     @property
     def has_live_cap(self) -> bool:
-        return self.quantity is not None or self.amount_cad is not None
+        return self.quantity is not None and self.amount_cad is not None
 
 
 def parse_privilege_payload(payload: Mapping[str, Any] | None) -> SellingLimitSnapshot:
@@ -31,20 +31,23 @@ def parse_privilege_payload(payload: Mapping[str, Any] | None) -> SellingLimitSn
         limit = {}
     qty = limit.get("quantity")
     try:
-        qty_i = int(qty) if qty is not None else None
-    except (TypeError, ValueError):
+        qty_d = D(str(qty))
+        qty_i = int(qty_d) if qty_d.is_finite() and qty_d >= 0 and qty_d == qty_d.to_integral_value() else None
+    except (TypeError, ValueError, ArithmeticError):
         qty_i = None
     amount = limit.get("amount") if isinstance(limit.get("amount"), dict) else {}
     value = amount.get("value") if isinstance(amount, dict) else None
     try:
         amt = D(str(value)) if value is not None else None
+        if amt is not None and (not amt.is_finite() or amt < 0 or amount.get("currency") != "CAD"):
+            amt = None
     except Exception:
         amt = None
     completed = payload.get("sellerRegistrationCompleted")
     if completed is None:
         completed = payload.get("seller_registration_completed")
-    if completed is not None:
-        completed = bool(completed)
+    if type(completed) is not bool:
+        completed = None
     return SellingLimitSnapshot(
         source="sell.account.v1.privilege",
         seller_registration_completed=completed,

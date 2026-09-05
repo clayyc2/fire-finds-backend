@@ -24,14 +24,14 @@ def test_privilege_snapshot_does_not_guess():
 
 
 def test_capacity_uses_live_item_cap():
-    s = Settings(monthly_item_limit=0, capacity_headroom_pct=0)
+    s = Settings(monthly_item_limit=0, monthly_value_limit_cad=1000, capacity_headroom_pct=0)
     e = OpportunityEngine(s)
     ds = [
         e.evaluate(Candidate(str(i), D("20"), D("10"), 10, channel_allowed=True, demand_score=D(i)))
         for i in range(5)
     ]
     picked = CapacityManager(s, live_item_limit=2).select(ds)
-    assert len(picked) == 2
+    assert sum(d.quantity for d in picked) == 2
 
 
 def test_ingest_seen_mapped_routed_off(tmp_path):
@@ -39,6 +39,8 @@ def test_ingest_seen_mapped_routed_off(tmp_path):
     assert s.supplier_orders_enabled is False
     order = {
         "orderId": "12-345",
+        "orderPaymentStatus": "PAID",
+        "orderFulfillmentStatus": "NOT_STARTED",
         "lineItems": [{"sku": "SKU1", "quantity": 2}],
         "shippingAddress": {
             "fullName": "Buyer",

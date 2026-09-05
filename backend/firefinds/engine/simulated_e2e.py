@@ -29,6 +29,11 @@ def run_simulated_e2e(
     order_path: Path,
     out_dir: Path,
 ) -> dict[str, Any]:
+    switches = (settings.live_listings_enabled, settings.ebay_sandbox_publish_enabled,
+                settings.ebay_production_enabled, settings.ebay_tracking_updates_enabled,
+                settings.supplier_orders_enabled)
+    if any(switches) or not settings.dry_run or not settings.global_kill_switch:
+        raise ValueError("simulated E2E requires dry-run, global kill, and all write gates OFF")
     out_dir.mkdir(parents=True, exist_ok=True)
     audit = Audit(out_dir / "e2e_audit.jsonl")
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -45,7 +50,7 @@ def run_simulated_e2e(
     engine = OpportunityEngine(settings)
     decisions = [engine.evaluate(c) for c in candidates]
     selected = CapacityManager(
-        settings, live_item_limit=item_cap or None, live_value_limit_cad=value_cap or None
+        settings, live_item_limit=item_cap, live_value_limit_cad=value_cap
     ).select(decisions)
     ingest = dry_run_lifecycle(settings, audit, out_dir / "ingest_orders.json", order)
     selected_skus = [d.sku for d in selected]
@@ -61,11 +66,11 @@ def run_simulated_e2e(
         "tracking_posted": False,
         "publish_called": False,
         "simulated_fulfillment": {
-            "prepared": True,
+            "prepared": False,
             "carrier": None,
             "tracking_number": None,
             "posted": False,
-            "reason": "EBAY_TRACKING_UPDATES_ENABLED=false",
+            "reason": "shipment_evidence_not_available",
         },
         "live_sandbox_gets": "pending",
         "gates": {

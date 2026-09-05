@@ -12,10 +12,42 @@ AI is not on the execution path. Live writes stay gated off.
 ## Simulated E2E
 `firefinds simulated-e2e` using tests/fixtures/{randmar_catalog_mini,ebay_privilege,ebay_paid_order}.json
 
-Live Sandbox GETs: verified 2026-09-05 (privilege, orders, policies, inventory
-locations, payments program). The account reported
+Live Sandbox GETs: reported successful by Grok Bot on 2026-09-05 (privilege,
+orders, policies, inventory locations, payments program); not independently
+repeated on this local clone. The account reportedly returned
 `sellerRegistrationCompleted=false` and no numeric selling limit, so Capacity
 Manager remains fail-closed instead of guessing capacity. Write gates: off.
+
+## Current execution boundaries
+
+`poll-sandbox-orders --mapping data/verified_sku_mapping.json` performs a bounded
+read-only sweep and persists order records privately. The mapping file is a JSON
+object of exact merchant SKU to verified Randmar SKU; unknown matches are held.
+`fulfillment.preview.prepare_fulfillment` accepts an explicit supplier mapping,
+fresh buyer-destination quote and net per-unit sale revenue (CAD, after discounts,
+excluding tax). It prepares checkout fields only. The caller is responsible for
+collecting/normalizing this source evidence; no production worker does this yet.
+
+The submission guard durably records `SUBMITTING` before one callback attempt.
+Timeouts become `UNKNOWN`; crashes leave `SUBMITTING`. Both remain held across
+restart and can only be marked submitted after a matching supplier PO/order read.
+Empty lookup evidence never authorizes a second purchase. All cooperating workers
+must use the same checkpoint/lock path on a POSIX filesystem; multiple independent
+runner stores are not a supported deployment. The guard is not a substitute for
+catalog, economics, payment and channel checks before purchase.
+
+Capacity limits apply to units and total quantity times price. Unknown item or
+value caps hold allocation. `balanced` prioritizes rank score, `item_first` low
+unit price, and `value_first` high unit price. Cross-worker capacity reservations
+and current account-usage collection remain to be connected before publishing.
+
+The CLI fixture lifecycle covers catalog → score → capacity → ingest. The
+integrated fulfillment test separately exercises fake supplier confirmation,
+durable replay refusal and shipment evidence matching. Tracking preparation
+requires exact PO/order/SKU, full quantity and a verified carrier mapping;
+partial and ambiguous shipment evidence is held. Actual supplier confirmation,
+shipment polling and eBay tracking delivery are remaining deployment/integration
+work; no simulation claims an actual shipment. See the readiness report.
 
 ## Evidence boundary for demand discovery
 

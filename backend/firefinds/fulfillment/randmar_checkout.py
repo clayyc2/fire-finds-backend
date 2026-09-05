@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from typing import Any, Mapping
 
 
@@ -17,7 +18,8 @@ def cart_name_for(ebay_order_id: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_-]+", "-", ebay_order_id).strip("-")
     if not safe:
         raise ValueError("eBay order id cannot produce an empty cart name")
-    return f"ff-ebay-{safe}"[:80]
+    suffix = hashlib.sha256(ebay_order_id.encode()).hexdigest()[:20]
+    return f"ff-ebay-{safe[:51]}-{suffix}"
 
 
 def build_process_cart_input(
@@ -26,11 +28,11 @@ def build_process_cart_input(
 ) -> dict[str, Any]:
     """Build only fields accepted by Randmar ProcessCartInput."""
     required = ("name", "street1", "city", "province", "postal_code", "country", "phone")
-    missing = [name for name in required if not str(ship_to.get(name, "")).strip()]
-    if missing or not str(shipping_method_id).strip() or not str(ebay_order_id).strip():
+    missing = [name for name in required if not isinstance(ship_to.get(name), str) or not ship_to[name].strip()]
+    if missing or not isinstance(shipping_method_id, str) or not shipping_method_id.strip() or not isinstance(ebay_order_id, str) or not ebay_order_id.strip():
         raise ValueError("missing checkout fields: " + ", ".join(missing or ["shipping_method_id/order_id"]))
-    country = str(ship_to["country"]).upper()
-    province = str(ship_to["province"]).upper()
+    country = str(ship_to["country"]).strip().upper()
+    province = str(ship_to["province"]).strip().upper()
     if country not in {"CA", "US"} or len(province) != 2:
         raise ValueError("Randmar requires CA/US and a two-letter province/state")
     name = str(ship_to["name"]).strip()

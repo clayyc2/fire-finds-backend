@@ -630,6 +630,24 @@ def build_parser() -> argparse.ArgumentParser:
         description="Fire Finds interim backend CLI",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+    from .sandbox_cmds import cmd_ebay_sandbox_reads, cmd_order_ingest_dry_run, cmd_simulated_e2e, cmd_poll_sandbox_orders
+    sub.add_parser("ebay-sandbox-reads", help="Read-only Sandbox account checks").set_defaults(func=cmd_ebay_sandbox_reads)
+    fixture_root = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
+    p_sim = sub.add_parser("simulated-e2e", help="Run local fixture lifecycle; no network")
+    p_sim.add_argument("--catalog", default=str(fixture_root / "randmar_catalog_mini.json"))
+    p_sim.add_argument("--privilege", default=str(fixture_root / "ebay_privilege.json"))
+    p_sim.add_argument("--order", default=str(fixture_root / "ebay_paid_order.json"))
+    p_sim.add_argument("--out", default="data/simulated_e2e")
+    p_sim.set_defaults(func=cmd_simulated_e2e)
+    p_orders = sub.add_parser("order-ingest-dry-run", help="Validate fixture paid order; no network")
+    p_orders.add_argument("--fixture", default=str(fixture_root / "ebay_paid_order.json"))
+    p_orders.add_argument("--out", default="data/order_ingest_dry_run")
+    p_orders.set_defaults(func=cmd_order_ingest_dry_run)
+    p_poll = sub.add_parser("poll-sandbox-orders", help="Read and checkpoint paid orders; never submit")
+    p_poll.add_argument("--mapping", required=True, help="JSON merchant SKU to verified Randmar SKU mapping")
+    p_poll.add_argument("--out", default="data/sandbox_orders")
+    p_poll.add_argument("--max-pages", type=int, default=20)
+    p_poll.set_defaults(func=cmd_poll_sandbox_orders)
 
     p_ingest = sub.add_parser(
         "ingest-stub", help="Load deterministic stub catalog into SQLite"

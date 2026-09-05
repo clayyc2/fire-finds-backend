@@ -780,6 +780,7 @@ class EbayClient:
         body: dict[str, Any] | None = None,
         op: str = "request",
         retry_401: bool = True,
+        read_attempt: int = 0,
     ) -> dict[str, Any] | None:
         """Authenticated Sell API call. Returns parsed JSON or None for empty 204."""
         url = f"{self._sell_base()}{path}"
@@ -799,8 +800,17 @@ class EbayClient:
                 self._user_access_token = None
                 self._user_access_token_expires_at = 0.0
                 return self._sell_json(
-                    method, path, body=body, op=op, retry_401=False
+                    method, path, body=body, op=op, retry_401=False,
+                    read_attempt=read_attempt
                 )
+            if method.upper() == "GET":
+                from .read_retry import read_retry_delay
+                delay = read_retry_delay(exc, read_attempt, max(1, self.settings.retry_max_attempts))
+                if delay is not None:
+                    exc.close()
+                    time.sleep(delay)
+                    return self._sell_json(method, path, body=body, op=op,
+                                           retry_401=retry_401, read_attempt=read_attempt + 1)
             self._raise_sell_http(exc, op=op)
         except urllib.error.URLError as exc:
             raise RuntimeError(f"eBay Sell {op} failed: {exc.reason}") from None
