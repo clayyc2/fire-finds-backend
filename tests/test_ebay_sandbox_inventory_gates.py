@@ -216,7 +216,8 @@ def test_create_or_update_offer_updates_existing(tmp_path: Path):
     def fake_urlopen(req, timeout=60):
         calls.append(f"{req.method}:{req.full_url}")
         if req.method == "GET":
-            return _FakeResp({"offers": [{"offerId": "EXISTING1"}]})
+            return _FakeResp({"offers": [{"offerId": "EXISTING1", "sku": "SKU1",
+                                         "marketplaceId": "EBAY_CA", "format": "FIXED_PRICE"}]})
         if req.method == "PUT":
             return _FakeResp(None, 204)
         raise AssertionError(req.method)
@@ -229,6 +230,43 @@ def test_create_or_update_offer_updates_existing(tmp_path: Path):
     assert out["updated"] is True
     assert any(c.startswith("GET:") for c in calls)
     assert any(c.startswith("PUT:") for c in calls)
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 429, 500, 503])
+def test_offer_lookup_error_never_creates_duplicate(tmp_path: Path, status):
+    client = EbayClient(_settings(tmp_path))
+    _store_refresh(client.settings)
+    with patch.object(client, "get_offers_for_sku", side_effect=EbayApiError("lookup failed", status=status)), \
+            patch.object(client, "create_offer") as create, patch.object(client, "update_offer") as update:
+        with pytest.raises(EbayApiError):
+            client.create_or_update_offer({"sku": "SKU1", "marketplaceId": "EBAY_CA", "format": "FIXED_PRICE"})
+        create.assert_not_called()
+        update.assert_not_called()
+
+
+@pytest.mark.parametrize("response", [None, {}, {"offers": None}, {"offers": [], "next": "next"},
+    {"offers": [], "total": 1}, {"offers": [], "total": False},
+    {"offers": [{"offerId": "missing_identity"}]}, {"offers": [{}, {}]},
+    {"offers": [{"offerId": "x", "sku": "OTHER", "marketplaceId": "EBAY_CA", "format": "FIXED_PRICE"}]}])
+def test_ambiguous_offer_lookup_never_mutates(tmp_path: Path, response):
+    client = EbayClient(_settings(tmp_path))
+    _store_refresh(client.settings)
+    with patch.object(client, "get_offers_for_sku", return_value=response), \
+            patch.object(client, "create_offer") as create, patch.object(client, "update_offer") as update:
+        with pytest.raises(EbayApiError):
+            client.create_or_update_offer({"sku": "SKU1", "marketplaceId": "EBAY_CA", "format": "FIXED_PRICE"})
+        create.assert_not_called()
+        update.assert_not_called()
+
+
+def test_explicit_empty_offer_lookup_can_create(tmp_path: Path):
+    client = EbayClient(_settings(tmp_path))
+    _store_refresh(client.settings)
+    payload = {"sku": "SKU1", "marketplaceId": "EBAY_CA", "format": "FIXED_PRICE"}
+    with patch.object(client, "get_offers_for_sku", return_value={"offers": [], "total": 0}), \
+            patch.object(client, "create_offer", return_value={"offerId": "new"}) as create:
+        assert client.create_or_update_offer(payload) == {"offerId": "new", "updated": False}
+        create.assert_called_once_with(payload)
 
 
 def test_e2e_runner_mocked_inventory_ok_offer_blocked_publish_refused(tmp_path: Path):

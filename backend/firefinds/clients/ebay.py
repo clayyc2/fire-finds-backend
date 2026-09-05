@@ -867,7 +867,9 @@ class EbayClient:
         result = self._sell_json(
             "GET", f"/inventory/v1/offer?{qs}", op="getOffers"
         )
-        return result if isinstance(result, dict) else {"offers": []}
+        if not isinstance(result, dict):
+            raise EbayApiError("Invalid offer lookup response; no mutation attempted")
+        return result
 
     def create_offer(self, payload: dict[str, Any]) -> dict[str, Any]:
         """POST sell/inventory/v1/offer with user access token."""
@@ -902,14 +904,20 @@ class EbayClient:
         sku = str((payload or {}).get("sku") or "").strip()
         if not sku:
             raise ValueError("offer payload requires sku")
-        try:
-            existing = self.get_offers_for_sku(sku)
-        except EbayApiError:
-            existing = {"offers": []}
+        # A failed lookup (including throttling/auth/timeouts) is not proof of
+        # absence. Never turn an uncertain read into a create-offer request.
+        existing = self.get_offers_for_sku(sku)
         offers = existing.get("offers") if isinstance(existing, dict) else None
-        if isinstance(offers, list) and offers:
+        if (not isinstance(offers, list) or len(offers) > 1 or existing.get("next") or
+                ("total" in existing and (type(existing["total"]) is not int or
+                                           existing["total"] != len(offers)))):
+            raise EbayApiError("Incomplete or ambiguous offer lookup; no mutation attempted")
+        if offers:
             first = offers[0] if isinstance(offers[0], dict) else {}
             oid = str(first.get("offerId") or "").strip()
+            if not oid or any(first.get(key) != payload.get(key)
+                              for key in ("sku", "marketplaceId", "format")):
+                raise EbayApiError("Offer identity unresolved; no mutation attempted")
             if oid:
                 updated = self.update_offer(oid, payload)
                 if isinstance(updated, dict):

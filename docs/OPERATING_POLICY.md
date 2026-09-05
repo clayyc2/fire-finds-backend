@@ -69,3 +69,15 @@ Config schema: `Settings` / `.env.example` — `TARGET_PROFIT_PCT=0.18`,
 Legacy comparable functions remain available for compatibility but their
 network entry points are disabled by default. Do not opt them in under the
 current operating policy. Synthetic tests make no market research requests.
+
+## Latest instruction: publish without waiting for supplier replies
+
+The user confirmed the setup email was sent and explicitly requested immediate
+publication, accepting business risk rather than awaiting supplier replies.
+Do not ask the user to repeat publication authorization or treat a pending
+email reply as the only blocker. This request is not factual evidence of
+supplier eligibility, checkout costs or a working fulfillment deployment, and
+does not authorize false product/shipping claims or acceptance of new supplier
+terms. At this checkpoint all 4,503 screening candidates lack finalized
+listing prices and the automatic fulfillment deployment remains incomplete.
+No actual publication has occurred.

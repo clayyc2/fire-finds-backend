@@ -92,8 +92,8 @@ On September 5, a setup inquiry was composed in Apple Mail from
 hello@firefinds.store to the address displayed by Randmar's official contact
 page, service@randmar.io, subject **Fire Finds: eBay resale and API fulfillment
 setup**. Send was clicked and the compose window closed. Sent-folder
-verification was blocked by the Mail privacy guard, so delivery is unconfirmed;
-do not resend without checking for a duplicate.
+verification was blocked by the Mail privacy guard. The user subsequently
+confirmed the email is sent. No resend or further Mail access is needed.
 
 The inquiry asks about Brother/Canon eBay permission and media usage, unattended
 STRIPE payment/release, duplicate PO and not-found behavior, shipping tax/Date
