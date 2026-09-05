@@ -236,12 +236,14 @@ class EbayClient:
         return SANDBOX_BROWSE_BASE
 
     def _sell_base(self) -> str:
-        if (
-            self.settings.ebay_env == "production"
-            and self.settings.ebay_production_enabled
-        ):
+        # Select the host by credential environment, never by write permission.
+        # A disabled production gate must not send production tokens to Sandbox.
+        # Mutation methods enforce their own gates before reaching this transport.
+        if self.settings.ebay_env == "production":
             return PRODUCTION_SELL_BASE
-        return SANDBOX_SELL_BASE
+        if self.settings.ebay_env == "sandbox":
+            return SANDBOX_SELL_BASE
+        raise ValueError("Unknown eBay Sell environment")
 
     def fetch_app_token(self, *, for_browse: bool = True) -> str:
         """OAuth2 client-credentials application token. Never logs secrets."""

@@ -2,11 +2,12 @@
 
 **Overall:** `NOT_READY_FOR_LIVE__LOCAL_FAILURE_TESTS_PASS`
 
-Live-write gates remain OFF. Grok Bot reported successful Sandbox OAuth and
-read-only account checks on 2026-09-05. This local clone has neither those eBay
-credentials nor the runner's raw report, so these account checks have not been
-independently repeated here. No publish, fulfillment write, or supplier order
-was performed during this verification.
+Live-write gates remain OFF. The encrypted Grok handoff has now been verified
+and reviewed locally; environment-matched credentials are installed privately.
+Independent Sandbox AND Production read-only account checks passed here on
+2026-09-05. Production roster reconciliation matched 48/48 published offers.
+No publish, fulfillment write, or supplier order was performed during this
+verification. Grok/Grok Bots are retired from Fire Finds execution.
 
 ## Implemented
 - Six deterministic service components; continuous production operation is not wired or deployed.
@@ -47,7 +48,7 @@ was performed during this verification.
 - Capacity caps from fixture (`quantity=25`, `amount=5000 CAD`).
 - Tracking payload preparation.
 
-## Grok-reported Sandbox account facts (2026-09-05)
+## Independently verified Sandbox account facts (2026-09-05)
 - `sellerRegistrationCompleted=false`.
 - `sellingLimit=null`; Capacity Manager records this as unavailable and does not
   guess a limit.
@@ -55,11 +56,17 @@ was performed during this verification.
 - Exactly one payment, return, and fulfillment policy was returned.
 - Inventory location `firefinds_laval_wh` exists.
 - Orders returned: `0`.
-- Sanitized runner report: `data/reports/sandbox_readonly_checks_latest.md`
-  (runner-local; no credentials belong in Git).
+- Local sanitized report: `data/verification-20260905-sandbox/account_readiness.json`.
+
+## Independently verified Production facts (2026-09-05)
+- Seller registration completed; limits 5,000 items and CAD 69,515.02.
+- Account privilege, orders, policies, locations and payments reads all passed.
+- 48/48 roster listing IDs matched published offers; zero recent orders returned.
+- Local evidence: `data/verification-20260905-production-correct-host/`.
+- Remaining monthly capacity and current supplier economics are not yet verified.
 
 ## Test status
-243 tests passed locally, including failure and concurrency tests. An integrated
+258 tests passed locally, including failure and concurrency tests. An integrated
 fixture test connects polling, mapped ingest, fulfillment preview, a fake
 supplier guarded against replay, shipment matching, and refusal of live writes.
 It uses in-memory supplier responses and is not a real supplier purchase. The actual
@@ -71,12 +78,12 @@ This is not a full supplier-order-to-eBay-tracking E2E pass.
 RANDMAR_FIRST SAFE 127 / DEST 25 / QUAR 85 / ranked 152. EBAY_DEMAND_FIRST scaffold.
 
 ## Remaining blockers
-1. Make Sandbox credentials securely available to the verification runner, or
-   run this branch on the already-authorized Grok host. Never use chat or Git.
+1. Secure migration and local account reads are complete. Review remaining
+   inherited code/assets and supplier credentials without resuming Grok/Bots.
 2. Investigate `sellerRegistrationCompleted=false`; it is not established as
    the only blocker, and successful offer creation does not establish readiness.
-3. Validate the existing production listing roster and exact supplier mappings.
-   No current live-listing mapping data is available in this local clone.
+3. Production listing roster is verified 48/48; exact fresh supplier identity,
+   availability, shipping and economics still need independent reconciliation.
 4. Complete orchestration: fresh catalog/buyer quote/paid order → preview → PO
    lookup → submission guard → supplier confirmation → verified shipment match
    → eBay tracking. Components and fixtures do not prove a deployed worker.

@@ -12,11 +12,14 @@ AI is not on the execution path. Live writes stay gated off.
 ## Simulated E2E
 `firefinds simulated-e2e` using tests/fixtures/{randmar_catalog_mini,ebay_privilege,ebay_paid_order}.json
 
-Live Sandbox GETs: reported successful by Grok Bot on 2026-09-05 (privilege,
-orders, policies, inventory locations, payments program); not independently
-repeated on this local clone. The account reportedly returned
+Live Sandbox GETs independently passed on this local clone on 2026-09-05
+(privilege, orders, policies, inventory locations, payments program). The account returned
 `sellerRegistrationCompleted=false` and no numeric selling limit, so Capacity
-Manager remains fail-closed instead of guessing capacity. Write gates: off.
+Manager remains fail-closed instead of guessing Sandbox capacity. Production
+reads separately returned limits of 5,000 items / CAD 69,515.02 and matched all
+48 roster entries to published offers. Write gates remain off; actual remaining
+capacity and supplier economics still require verification. Grok is retired from
+execution; see `CODEX_TAKEOVER.md` for migration and evidence details.
 
 ## Current execution boundaries
 

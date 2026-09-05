@@ -29,7 +29,7 @@ def persist_privilege(snapshot: SellingLimitSnapshot, path: Path = CAPACITY_FILE
     return path
 
 
-def sanitized_read_report(client: EbayClient) -> dict[str, Any]:
+def sanitized_read_report(client: EbayClient, *, capacity_path: Path = CAPACITY_FILE) -> dict[str, Any]:
     status = client.sandbox_status()
     report: dict[str, Any] = {
         "token_present": bool(status.get("user_refresh_token_present")),
@@ -62,16 +62,35 @@ def sanitized_read_report(client: EbayClient) -> dict[str, Any]:
             report["reads"][name] = {"ok": True, "keys": keys}
             if name == "privilege" and isinstance(body, dict):
                 snap = parse_privilege_payload(body)
-                persist_privilege(snap)
+                persist_privilege(snap, capacity_path)
                 report["reads"][name]["selling_limit_quantity"] = snap.quantity
+                report["reads"][name]["selling_limit_amount_cad"] = (
+                    str(snap.amount_cad) if snap.amount_cad is not None else None)
                 report["reads"][name]["has_live_cap"] = snap.has_live_cap
                 report["reads"][name]["seller_registration_completed"] = snap.seller_registration_completed
             if name == "orders" and isinstance(body, dict):
                 report["reads"][name]["order_count"] = len(body.get("orders") or [])
+                report["reads"][name]["total"] = body.get("total")
+                report["reads"][name]["scope"] = "eBay default recent-order window; first page"
             if name == "policies" and isinstance(body, dict):
                 report["reads"][name]["policy_groups"] = sorted(body.keys())
+                report["reads"][name]["counts"] = {
+                    group: len((body.get(group) or {}).get(field) or [])
+                    for group, field in (("payment_policy", "paymentPolicies"),
+                                         ("return_policy", "returnPolicies"),
+                                         ("fulfillment_policy", "fulfillmentPolicies"))
+                }
+            if name == "locations" and isinstance(body, dict):
+                report["reads"][name]["location_count"] = len(body.get("locations") or [])
+            if name == "payments_program" and isinstance(body, dict):
+                report["reads"][name]["status"] = (
+                    body.get("status") if body.get("status") in
+                    {"OPTED_IN", "NOT_OPTED_IN", "IN_PROGRESS"} else "UNKNOWN")
         except Exception as exc:
             report["reads"][name] = {"ok": False, "error_type": type(exc).__name__}
+            status_code = getattr(exc, "status", None)
+            if isinstance(status_code, int):
+                report["reads"][name]["http_status"] = status_code
     return report
 
 

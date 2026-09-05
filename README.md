@@ -1,4 +1,19 @@
-# Fire Finds — interim backend
+# Fire Finds — deterministic ecommerce rebuild
+
+Current status: **not yet deployed for automatic fulfillment**. The deterministic
+rebuild is on `codex/deterministic-ecommerce-engine`; live commerce writes remain
+off while verification and migration are completed. Start with
+[architecture](docs/DETERMINISTIC_ENGINE.md),
+[launch readiness](docs/LAUNCH_READINESS_REPORT.md), and
+[Grok retirement / takeover](docs/CODEX_TAKEOVER.md).
+
+As of Clay's 2026-09-05 direction, Grok and Grok Bots are retired from Fire Finds
+operations. Historical AI-org and launch-mandate documents below are context,
+not current authorization to resume bots or publish. No AI service is required
+on the deterministic execution path.
+
+The sections below describe the inherited interim backend; dated inventory
+counts and prior API results require fresh independent verification.
 
 Git repo tracking `https://github.com/clayyc2/fire-finds-backend`.
 Python package lives under `backend/firefinds/`.
