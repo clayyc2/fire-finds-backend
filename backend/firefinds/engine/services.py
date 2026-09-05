@@ -72,7 +72,7 @@ class OpportunityEngine:
         undercut = D(str(self.s.competitor_undercut_cad))
         if not undercut.is_finite() or undercut < D("0.01"):
             raise ValueError("competitor undercut must be at least one cent")
-        if c.competitor_price is not None:
+        if self.s.market_research_enabled and c.competitor_price is not None:
             # Caller supplies a verified comparable delivered CAD price on the
             # SAME price basis as this offer. Competition can raise our profit,
             # but can never cut through MAP or either profit minimum.
@@ -80,8 +80,9 @@ class OpportunityEngine:
             price = max(price, competitive)
         profit=money(price*(D("1")-fee)-fixed-landed); margin=profit/price
         if profit < D(str(self.s.min_contribution_profit_cad)) or margin < D(str(self.s.min_contribution_margin)): return Decision(c.sku,False,"PROFIT_FLOOR",price=price,profit=profit,margin=margin)
-        score=(profit*D(str(self.s.ranking_profit_weight))+c.demand_score*D(str(self.s.ranking_demand_weight))+c.competition_score*D(str(self.s.ranking_competition_weight)))
-        reason = "FLOOR_ABOVE_COMPETITION" if c.competitor_price is not None and price >= c.competitor_price else "PASS"
+        score=(profit*D(str(self.s.ranking_profit_weight))+c.demand_score*D(str(self.s.ranking_demand_weight))+
+               (c.competition_score*D(str(self.s.ranking_competition_weight)) if self.s.market_research_enabled else D(0)))
+        reason = "FLOOR_ABOVE_COMPETITION" if self.s.market_research_enabled and c.competitor_price is not None and price >= c.competitor_price else "PASS"
         return Decision(c.sku,True,reason,price,c.stock-self.s.stock_buffer,profit,margin,score)
 
 class CapacityManager:

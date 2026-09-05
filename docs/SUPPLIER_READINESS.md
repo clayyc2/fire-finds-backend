@@ -72,8 +72,9 @@ they expire for live decisions and must be refreshed before purchases/listing.
 - [ ] Verify real supplier PO-not-found and positive reconciliation contracts;
       never retry an uncertain purchase merely because a lookup is empty.
 - [ ] Complete Sandbox/dry-run end-to-end acceptance with real response shapes.
-- [ ] Finish attributable eBay demand/competitive-price collection and catalogue
-      ranking; supplier sales or asking prices are not verified eBay sell-through.
+- [x] Replace external demand/comparables with the user's latest no-research
+      policy: offline opinion queue, then Fire Finds' own results. 4,503
+      screening candidates are prepared; this does not certify readiness.
 - [ ] Deploy deterministic services, shared purchase/publication reservations,
       alerts and recovery checks on an always-on runner, independent of AI.
 - [ ] Re-read actual remaining eBay allowance immediately before allocation;
@@ -84,3 +85,19 @@ data/fulfillment-readiness/verified_sku_mapping.json --secrets-dir secrets
 --reseller-id <reseller-id> --out data/supplier-readiness/listed-buyability.json`.
 Quote probe: `python3 scripts/supplier_quote_probe.py --sku <sku> --secrets-dir
 secrets --reseller-id <reseller-id> --out data/supplier-readiness/<probe>`.
+
+## Supplier inquiry follow-up
+
+On September 5, a setup inquiry was composed in Apple Mail from
+hello@firefinds.store to the address displayed by Randmar's official contact
+page, service@randmar.io, subject **Fire Finds: eBay resale and API fulfillment
+setup**. Send was clicked and the compose window closed. Sent-folder
+verification was blocked by the Mail privacy guard, so delivery is unconfirmed;
+do not resend without checking for a duplicate.
+
+The inquiry asks about Brother/Canon eBay permission and media usage, unattended
+STRIPE payment/release, duplicate PO and not-found behavior, shipping tax/Date
+meaning and delivery/return terms, plus the two purchase-denied HP SKUs. It
+explicitly does not authorize purchases, charges, tier changes or new terms.
+No supplier answer has been verified. Latest test total and queue state are in
+`LISTING_PREFLIGHT.md`; the earlier 404-test milestone above is historical.

@@ -111,7 +111,7 @@ def test_invalid_privilege_is_not_usable_capacity(quantity, value, currency):
 
 
 def test_safe_price_cannot_be_cut_below_map_or_target():
-    settings = Settings(target_profit_pct=.25)
+    settings = Settings(target_profit_pct=.25, market_research_enabled=True)
     c = Candidate("A", D("20"), D("10"), 10, map_price=D("70"), competitor_price=D("69"), channel_allowed=True)
     decision = OpportunityEngine(settings).evaluate(c)
     assert decision.allowed and decision.reason == "FLOOR_ABOVE_COMPETITION"

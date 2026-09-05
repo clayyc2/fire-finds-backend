@@ -93,6 +93,7 @@ def test_recheck_backend_gates_pass(settings: Settings):
     conn = init_db(settings.db_path)
     product = dict(conn.execute("SELECT * FROM products WHERE sku=?", (sku,)).fetchone())
     conn.close()
+    product.update(channel_allowed=True, channel_evidence="test fixture permission")
     result = recheck_backend_gates(product, settings=settings)
     assert result["pass"] is True
     assert result["checks"]["shipping_resolved"]["pass"] is True
@@ -102,7 +103,7 @@ def test_recheck_backend_gates_pass(settings: Settings):
     assert result["checks"]["channel_ok"]["pass"] is True
 
 
-def test_dry_run_sku_e2e(settings: Settings, tmp_path: Path):
+def test_legacy_listable_flags_without_permission_hold_e2e(settings: Settings, tmp_path: Path):
     sku = _seed_listable(settings)
     report_dir = tmp_path / "dry_runs"
     report = run_dry_run_sku(
@@ -116,16 +117,15 @@ def test_dry_run_sku_e2e(settings: Settings, tmp_path: Path):
     assert report["dry_run"] is True
     assert report["live_publish"] is False
     assert report["supplier_order_api_called"] is False
-    assert report["backend_gates"]["pass"] is True
-    assert report["listing_status"] == LISTING_SIMULATED
-    assert report["order_status"] == ORDER_SIMULATED
+    assert report["backend_gates"]["pass"] is False
+    assert report["backend_gates"]["checks"]["channel_ok"]["pass"] is False
+    assert report["listing_status"] is None
+    assert report["order_status"] is None
     stage_names = [s["stage"] for s in report["stages"]]
     assert stage_names == [
         "research",
         "creative",
         "backend_gates",
-        "simulated_listing",
-        "simulated_order",
         "operations",
     ]
     assert Path(report["report_path"]).is_file()
@@ -133,8 +133,8 @@ def test_dry_run_sku_e2e(settings: Settings, tmp_path: Path):
     assert metrics["pipeline_source"] == PIPELINE_RANDMAR_FIRST
     assert metrics["match_confidence"] == "A_EXACT"
     assert metrics["creative_variant"] == "ORIGINAL_SUPPLIER"
-    assert metrics["listing_status"] == LISTING_SIMULATED
-    assert metrics["order_status"] == ORDER_SIMULATED
+    assert metrics["listing_status"] != LISTING_SIMULATED
+    assert metrics["order_status"] != ORDER_SIMULATED
     assert metrics["ab_assignment"] == "A|B"
     # Drafts written
     creative = next(s for s in report["stages"] if s["stage"] == "creative")
@@ -144,8 +144,8 @@ def test_dry_run_sku_e2e(settings: Settings, tmp_path: Path):
     lines = settings.actions_jsonl.read_text(encoding="utf-8").strip().splitlines()
     actions = {json.loads(line)["action"] for line in lines}
     assert "dry_run_research" in actions
-    assert "dry_run_listing" in actions
-    assert "dry_run_order" in actions
+    assert "dry_run_listing" not in actions
+    assert "dry_run_order" not in actions
     assert "dry_run_complete" in actions
 
 
@@ -157,4 +157,4 @@ def test_cli_dry_run_sku(monkeypatch, tmp_path: Path, settings: Settings):
     monkeypatch.setenv("SUPPLIER_ORDERS_ENABLED", "false")
     monkeypatch.setenv("EBAY_SANDBOX_PUBLISH_ENABLED", "false")
     rc = main(["dry-run-sku", "--sku", sku, "--snapshot-id", "testsnap"])
-    assert rc == 0
+    assert rc == 1  # Legacy listable flags lack explicit channel permission.

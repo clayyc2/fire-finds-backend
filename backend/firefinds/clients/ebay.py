@@ -247,6 +247,8 @@ class EbayClient:
 
     def fetch_app_token(self, *, for_browse: bool = True) -> str:
         """OAuth2 client-credentials application token. Never logs secrets."""
+        if for_browse and not self.settings.market_research_enabled:
+            raise EbayListingsDisabled("Market research disabled by operating policy")
         self.require_credentials()
         client_id, client_secret = self._load_credentials(for_browse=for_browse)
         assert client_id and client_secret
@@ -306,6 +308,8 @@ class EbayClient:
         filter_expr: str | None = "buyingOptions:{FIXED_PRICE}",
     ) -> dict[str, Any]:
         """GET /item_summary/search — read-only competition lookup."""
+        if not self.settings.market_research_enabled:
+            raise EbayListingsDisabled("Market research disabled by operating policy")
         self.require_credentials()
         params: dict[str, str] = {
             "limit": str(max(1, min(int(limit), 200))),
@@ -372,6 +376,8 @@ class EbayClient:
         top_n: int | None = None,
     ) -> CompetitionSnapshot:
         """Search CA marketplace by UPC else MPN/title; return price stats."""
+        if not self.settings.market_research_enabled:
+            raise EbayListingsDisabled("Market research disabled by operating policy")
         top_n = top_n if top_n is not None else self.settings.ebay_comp_top_n
         upc = (product.get("upc") or "").strip() if product.get("upc") else ""
         mpn = (product.get("mpn") or "").strip() if product.get("mpn") else ""

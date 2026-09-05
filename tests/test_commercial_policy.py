@@ -18,19 +18,19 @@ def candidate(**changes):
 
 
 def test_price_keeps_upside_instead_of_selling_at_minimum():
-    decision = OpportunityEngine(Settings()).evaluate(candidate(competitor_price=D(100)))
+    decision = OpportunityEngine(Settings(market_research_enabled=True)).evaluate(candidate(competitor_price=D(100)))
     assert decision.allowed and decision.price == D("99.99")
     assert decision.margin > D(".18") and decision.profit > 8
 
 
 def test_price_exceeds_cheap_competitor_when_needed_for_floor():
-    decision = OpportunityEngine(Settings()).evaluate(candidate(competitor_price=D(25)))
+    decision = OpportunityEngine(Settings(market_research_enabled=True)).evaluate(candidate(competitor_price=D(25)))
     assert decision.allowed and decision.reason == "FLOOR_ABOVE_COMPETITION"
     assert decision.price > 25 and decision.margin >= D(".18") and decision.profit >= 8
 
 
 def test_map_and_configurable_undercut_preserve_minimums():
-    engine = OpportunityEngine(Settings(competitor_undercut_cad=.10))
+    engine = OpportunityEngine(Settings(competitor_undercut_cad=.10, market_research_enabled=True))
     assert engine.evaluate(candidate(competitor_price=D(100))).price == D("99.90")
     assert engine.evaluate(candidate(competitor_price=D(100), map_price=D(120))).price == D(120)
 

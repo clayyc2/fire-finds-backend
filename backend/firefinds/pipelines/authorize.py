@@ -36,12 +36,17 @@ def authorize_sku(product: Mapping[str, Any]) -> dict[str, Any]:
         flags.append("market_under_map_floored")
 
     opportunity_only = bool(product.get("opportunity_only"))
-    channel_ok = not opportunity_only
+    # Buyability and opportunity status never establish eBay resale permission.
+    evidence = product.get("channel_evidence")
+    channel_ok = (product.get("channel_allowed") is True and
+                  isinstance(evidence, str) and bool(evidence.strip()) and not opportunity_only)
     if opportunity_only:
         flags.append("opportunity_only_channel_restricted")
 
     # Manual review when MAP policy is awkward or channel metadata is incomplete
-    needs_manual = False
+    needs_manual = not channel_ok
+    if not channel_ok:
+        flags.append("ebay_channel_permission_unresolved")
     if opportunity_only:
         needs_manual = True
     if below_map_attempt and map_price > 0:

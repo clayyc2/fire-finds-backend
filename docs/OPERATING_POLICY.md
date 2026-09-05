@@ -1,24 +1,22 @@
 # Clay's operating policy — 2026-09-05
 
-This records the user's latest instructions, superseding earlier advice to
-discard an otherwise eligible product solely because its safe price is above
-competition. It does not enable any live gate by itself.
+This records the user's latest instructions: NO market research or competitor
+price checks. It supersedes the earlier competition-led pricing and externally
+validated demand requirements. It does not enable any live gate by itself.
 
 ## Price
 
-Use the higher of (a) a verified comparable competitor's price less the
-configurable undercut, and (b) the price required by all profit and MAP floors.
-Default undercut: C$0.01. Comparisons must use matching product, condition,
-availability, market/currency and delivered-price basis; exclude Fire Finds'
-own offers and unresolved/stale evidence. The evidence provider is still work
-to complete; a numeric candidate field alone is not verified market evidence.
+Start at the price required by the profit and MAP floors below, rounded UP to
+the next cent. Do not fetch or use competitor comparables, including cached
+comparables. The user referred to the previously agreed economics as markup;
+the actual agreed rule remains contribution margin, not a cost markup.
 
 Both minimums apply: 18% contribution margin on revenue and C$8 contribution
 profit per order, after relevant costs, fees, shipping and returns allowance.
-Eighteen percent is a floor, not a ceiling: keep additional profit when market
-pricing supports it. MAP can force a higher price. If competitors are cheaper
-than the floor, offer at the floor instead of selling below it. Such items may
-rank lower for demand, but price competitiveness alone no longer rejects them.
+Eighteen percent is a floor, not a ceiling. MAP can force a higher price. Only
+Fire Finds' own results may inform subsequent discretionary price increases;
+an automatic price-experiment controller is not deployed yet. Supplier cost
+increases must still trigger fresh floor calculations or a hold.
 
 For an already-paid order, fulfillment checks the safe profit floor, not a
 competitor's newly increased asking price. No retrospective repricing of orders.
@@ -47,9 +45,13 @@ read-only check reports holds; alert delivery/scheduling are not deployed yet.
 
 Use deterministic scheduled software for import, ranking, capacity allocation,
 listing, repricing, order routing and tracking. AI is not required in the
-operating loop. Rank available inventory by likelihood of selling using
-attributable evidence, then list fulfillment-ready eligible products up to
-verified remaining eBay limits, accounting for pending reservations.
+operating loop. Initially prioritize repeat-use consumables, affordable/light
+products and buffered stock using catalogue-based opinion only. This is NOT a
+measured probability of sale. Do not use supplier sales percentiles, external
+sales data or competitor prices. Only attributable Fire Finds results may
+subsequently reorder this queue. Begin with one unit per qualified SKU to test
+more distinct products, then list in queue order up to both verified remaining
+eBay limits, accounting for pending reservations. See `CATALOGUE_QUEUE.md`.
 
 Clay conditionally authorized automatic fulfillment to activate as soon as it
 is ready. Record a readiness evaluation before activation; this is not approval
@@ -60,5 +62,10 @@ still requires direction. At this checkpoint live commerce gates remain OFF.
 
 Config schema: `Settings` / `.env.example` — `TARGET_PROFIT_PCT=0.18`,
 `MIN_CONTRIBUTION_MARGIN=0.18`, `MIN_CONTRIBUTION_PROFIT_CAD=8`,
-`COMPETITOR_UNDERCUT_CAD=0.01`, `DAILY_SUPPLIER_SPEND_LIMIT_CAD=2500`,
+`MARKET_RESEARCH_ENABLED=false`, `INITIAL_LISTING_QUANTITY=1`,
+`DAILY_SUPPLIER_SPEND_LIMIT_CAD=2500`,
 `SUPPLIER_SPEND_TIMEZONE=America/Edmonton`.
+
+Legacy comparable functions remain available for compatibility but their
+network entry points are disabled by default. Do not opt them in under the
+current operating policy. Synthetic tests make no market research requests.

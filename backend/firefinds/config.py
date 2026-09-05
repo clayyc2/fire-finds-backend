@@ -136,6 +136,8 @@ def _resolve_ebay_client_id(secrets_dir: Path) -> str | None:
 @dataclass(frozen=True)
 class Settings:
     dry_run: bool = True
+    market_research_enabled: bool = False
+    initial_listing_quantity: int = 1
     global_kill_switch: bool = True
     target_profit_pct: float = 0.18
     competitor_undercut_cad: float = 0.01
@@ -232,6 +234,8 @@ class Settings:
             strategy = "min_map_median"
         return cls(
             dry_run=_env_bool("DRY_RUN", True),
+            market_research_enabled=_env_bool("MARKET_RESEARCH_ENABLED", False),
+            initial_listing_quantity=_env_int("INITIAL_LISTING_QUANTITY", 1),
             global_kill_switch=_env_bool("GLOBAL_KILL_SWITCH", True),
             target_profit_pct=_env_float("TARGET_PROFIT_PCT", 0.18),
             competitor_undercut_cad=_env_float("COMPETITOR_UNDERCUT_CAD", 0.01),
