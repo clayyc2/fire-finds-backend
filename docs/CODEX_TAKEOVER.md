@@ -103,7 +103,11 @@ Independent local checks on 2026-09-05:
 All commerce gates stayed false. A published offer does not prove current stock,
 full shipping coverage, profitability, remaining monthly capacity, or automatic
 fulfillment. The read reported no recent orders; it is not an all-time order audit.
-Independent supplier freshness/identity reconciliation and the continuous worker
-remain unfinished. No source code from the imported copy was intentionally run;
+Supplier reconciliation subsequently read 19,583 Randmar catalog rows and
+verified all 48 eBay product mappings. The connected single-line fulfillment
+worker now passes mocked lifecycle/recovery tests; live evidence collection and
+continuous deployment remain unfinished. `HPW2020XC` is held for opportunity-only
+purchasing clearance. See `FULFILLMENT_WORKER.md` for the updated boundaries.
+No source code from the imported copy was intentionally run;
 test discovery is now explicitly restricted to the rebuild's `tests/` directory,
 excluding imported `data/` and `secrets/`.

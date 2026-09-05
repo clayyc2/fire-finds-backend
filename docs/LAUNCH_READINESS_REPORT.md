@@ -28,6 +28,13 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
 - Tracking preparation requires exact eBay PO, Randmar order number, supplier
   SKU, full shipped quantity and an explicit carrier mapping. Missing/ambiguous
   or partial shipment evidence is held; it never posts a tracking update.
+- A connected single-line fulfillment worker now coordinates fresh order/cart
+  checks, explicit policy/economics evidence, supplier submission, shipment
+  matching and durable tracking delivery. Tested with in-memory adapters only;
+  no production quote/economics provider or live-write CLI is registered.
+- A protected real-account order sweep feeds the worker using read-only clients.
+  Dry-run and the global kill switch now guard old Sandbox listing-write paths
+  too, even when valid credentials are installed.
 - Capacity counts units and price times units, preserves headroom/used capacity,
   handles explicit zero, and refuses allocation if either cap is unknown.
   Configured caps support planning, not proof of actual account limits.
@@ -44,9 +51,9 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
   program checks.
 
 ## Still simulated
-- Paid-order ingest and fulfillment.
-- Capacity caps from fixture (`quantity=25`, `amount=5000 CAD`).
-- Tracking payload preparation.
+- Nonempty paid-order fulfillment, supplier acceptance and shipment delivery.
+- Capacity allocation/usage reservations (real limit GETs are separately verified).
+- Tracking writes and confirmation, including timeout/crash recovery.
 
 ## Independently verified Sandbox account facts (2026-09-05)
 - `sellerRegistrationCompleted=false`.
@@ -64,12 +71,21 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
 - 48/48 roster listing IDs matched published offers; zero recent orders returned.
 - Local evidence: `data/verification-20260905-production-correct-host/`.
 - Remaining monthly capacity and current supplier economics are not yet verified.
+- Fresh Randmar catalog: 19,583 rows. Exact supplier-product identity verified
+  for all 48 listings against live eBay inventory/offer reads. No below-MAP or
+  stock-buffer violation appeared in the snapshot. Buyer-specific delivery
+  economics and channel permission are NOT implied by those checks.
+- `HPW2020XC` remains held for automatic purchasing because Randmar marks it
+  opportunity-only; the existing listing was not modified.
+- The new connected read-only order sweep returned zero recent orders.
+  Evidence and interpretation: `FULFILLMENT_WORKER.md`.
 
 ## Test status
-258 tests passed locally, including failure and concurrency tests. An integrated
-fixture test connects polling, mapped ingest, fulfillment preview, a fake
-supplier guarded against replay, shipment matching, and refusal of live writes.
-It uses in-memory supplier responses and is not a real supplier purchase. The actual
+317 tests passed locally, including failure and concurrency tests. Connected
+worker tests cover purchase/tracking acceptance followed by timeout, crash
+reconciliation, changed payment/cart/line data, stale stock and quotes, missing
+policy/economics, conflicting manual tracking and no automatic resubmission.
+They use in-memory commerce adapters, not real supplier purchases. The actual
 `python3 -m firefinds.cli.main simulated-e2e` command also passed without network
 writes. Tracking is explicitly unprepared because shipment evidence is absent.
 This is not a full supplier-order-to-eBay-tracking E2E pass.
@@ -82,11 +98,11 @@ RANDMAR_FIRST SAFE 127 / DEST 25 / QUAR 85 / ranked 152. EBAY_DEMAND_FIRST scaff
    inherited code/assets and supplier credentials without resuming Grok/Bots.
 2. Investigate `sellerRegistrationCompleted=false`; it is not established as
    the only blocker, and successful offer creation does not establish readiness.
-3. Production listing roster is verified 48/48; exact fresh supplier identity,
-   availability, shipping and economics still need independent reconciliation.
-4. Complete orchestration: fresh catalog/buyer quote/paid order → preview → PO
-   lookup → submission guard → supplier confirmation → verified shipment match
-   → eBay tracking. Components and fixtures do not prove a deployed worker.
+3. Product identity and catalog availability are checked for 48/48. Resolve
+   channel/return evidence and buyer-specific shipping/economics, including the
+   contractual/opportunity-only HP item, before any purchase.
+4. Connect the tested worker to a verified production evidence provider and
+   supplier PO-absence/carrier contracts. Tests do not prove a deployed worker.
 5. Add multi-line/partial-shipment handling, shipment reconciliation, account
    usage reservations, stale-limit checks, scheduling and operational alerts.
 6. Prove the real Sandbox paid-order/tracking lifecycle under the permitted

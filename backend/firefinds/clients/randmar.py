@@ -163,7 +163,11 @@ class RandmarClient:
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read().decode("utf-8")
+                raw_bytes = resp.read()
+                if (getattr(resp, "headers", {}).get("Content-Encoding") or "").lower() == "gzip":
+                    import gzip
+                    raw_bytes = gzip.decompress(raw_bytes)
+                raw = raw_bytes.decode("utf-8")
         except urllib.error.HTTPError as exc:
             body = ""
             try:

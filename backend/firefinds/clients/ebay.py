@@ -452,7 +452,11 @@ class EbayClient:
         (or LIVE_LISTINGS_ENABLED) — does **not** require LIVE_LISTINGS_ENABLED.
         Sandbox publish: refused unless EBAY_SANDBOX_PUBLISH_ENABLED=true.
         Production Sell: requires EBAY_PRODUCTION_ENABLED + LIVE_LISTINGS_ENABLED.
+        Every write also requires DRY_RUN=false and GLOBAL_KILL_SWITCH=false.
         """
+        if self.settings.dry_run or self.settings.global_kill_switch:
+            error = EbayPublishDisabled if publish else EbayListingsDisabled
+            raise error("Listing write refused: DRY_RUN or GLOBAL_KILL_SWITCH is active")
         is_production = self.settings.ebay_env == "production"
 
         if is_production:
@@ -962,7 +966,8 @@ class EbayClient:
             f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}/shipping_fulfillment",
             op="getShippingFulfillments",
         )
-        return result if isinstance(result, dict) else {"fulfillments": []}
+        # A malformed response is not proof that no tracking exists.
+        return result if isinstance(result, dict) else {}
 
     def get_privileges(self) -> dict[str, Any]:
         """Read seller privileges/limits for capacity decisions."""

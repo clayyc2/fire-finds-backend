@@ -6,7 +6,7 @@ AI is not on the execution path. Live writes stay gated off.
 2. Opportunity Engine (fail-closed gates)
 3. Capacity Manager (privilege fixture or live GET; never guess)
 4. Repricer
-5. Order ingest `SEEN → MAPPED → ROUTED_OFF` (eBay orderId = Randmar PO)
+5. Order Router: ingest plus connected fulfillment worker (eBay orderId = Randmar PO)
 6. Discovery/Refresh
 
 ## Simulated E2E
@@ -29,7 +29,8 @@ object of exact merchant SKU to verified Randmar SKU; unknown matches are held.
 `fulfillment.preview.prepare_fulfillment` accepts an explicit supplier mapping,
 fresh buyer-destination quote and net per-unit sale revenue (CAD, after discounts,
 excluding tax). It prepares checkout fields only. The caller is responsible for
-collecting/normalizing this source evidence; no production worker does this yet.
+collecting/normalizing this source evidence. A connected worker now consumes
+explicit evidence, but no production evidence collector is registered yet.
 
 The submission guard durably records `SUBMITTING` before one callback attempt.
 Timeouts become `UNKNOWN`; crashes leave `SUBMITTING`. Both remain held across
@@ -45,12 +46,12 @@ unit price, and `value_first` high unit price. Cross-worker capacity reservation
 and current account-usage collection remain to be connected before publishing.
 
 The CLI fixture lifecycle covers catalog → score → capacity → ingest. The
-integrated fulfillment test separately exercises fake supplier confirmation,
-durable replay refusal and shipment evidence matching. Tracking preparation
-requires exact PO/order/SKU, full quantity and a verified carrier mapping;
-partial and ambiguous shipment evidence is held. Actual supplier confirmation,
-shipment polling and eBay tracking delivery are remaining deployment/integration
-work; no simulation claims an actual shipment. See the readiness report.
+connected fulfillment worker now joins refreshed paid-order evidence, cart and
+economics checks, guarded submission, shipment reads and durable tracking
+delivery. Tests use fake commerce adapters and cover timeout/crash recovery;
+no simulation claims an actual purchase or shipment. A read-only production
+order sweep is available without enabling writes. See `FULFILLMENT_WORKER.md`
+for the implementation boundary, evidence and remaining launch checklist.
 
 ## Evidence boundary for demand discovery
 

@@ -1,7 +1,7 @@
 """Six deterministic services with fail-closed live boundaries."""
 from __future__ import annotations
 
-import hashlib, json, time
+import hashlib, json, os, time
 from dataclasses import replace
 from decimal import ROUND_CEILING
 from decimal import Decimal as D
@@ -11,13 +11,22 @@ from typing import Callable, Iterable, Mapping, Any
 from firefinds.config import Settings
 from .models import Candidate, Decision, money
 from .order_router import OrderRouter
+from .storage import checkpoint_lock
 
 class Audit:
     def __init__(self, path: Path): self.path = path
     def write(self, event: str, detail: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         row = {"ts": time.time(), "event": event, "detail": detail}
-        with self.path.open("a", encoding="utf-8") as fh: fh.write(json.dumps(row, default=str, sort_keys=True)+"\n")
+        # Private from creation; process-shared append lock and fsync ensure a
+        # completed audit call is durable before the next commerce operation.
+        with checkpoint_lock(self.path):
+            fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
+                os.fchmod(fh.fileno(), 0o600)
+                fh.write(json.dumps(row, default=str, sort_keys=True)+"\n")
+                fh.flush()
+                os.fsync(fh.fileno())
 
 class RandmarImporter:
     def __init__(self, audit: Audit): self.audit = audit

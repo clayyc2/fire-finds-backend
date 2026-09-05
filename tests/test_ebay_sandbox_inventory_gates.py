@@ -41,6 +41,10 @@ def _settings(tmp_path: Path, **kwargs) -> Settings:
         ebay_sandbox_publish_enabled=False,
         ebay_production_enabled=False,
         supplier_orders_enabled=False,
+        # These tests mock all HTTP. Explicitly permit Sandbox test writes;
+        # stored credentials alone no longer bypass dry-run/kill protection.
+        dry_run=False,
+        global_kill_switch=False,
     )
     base.update(kwargs)
     return Settings(**base)
@@ -88,6 +92,23 @@ def test_sandbox_inventory_allowed_with_refresh_without_live(tmp_path: Path):
     assert req.method == "PUT"
     assert "/inventory/v1/inventory_item/SKU1" in req.full_url
     assert "api.sandbox.ebay.com" in req.full_url
+
+
+@pytest.mark.parametrize("environment", ["sandbox", "production"])
+@pytest.mark.parametrize("control", ["dry_run", "global_kill_switch"])
+def test_global_controls_block_every_listing_mutation(tmp_path, environment, control):
+    settings = _settings(tmp_path, ebay_env=environment, live_listings_enabled=True,
+                         ebay_production_enabled=True, ebay_sandbox_publish_enabled=True,
+                         **{control: True})
+    _store_refresh(settings)
+    client = EbayClient(settings)
+    with patch("urllib.request.urlopen", side_effect=AssertionError("No HTTP allowed")):
+        with pytest.raises(EbayListingsDisabled):
+            client.create_offer({"sku": "X"})
+        with pytest.raises(EbayListingsDisabled):
+            client.create_or_replace_inventory_item("X", {})
+        with pytest.raises(EbayPublishDisabled):
+            client.publish_offer("offer-id")
 
 
 def test_sandbox_inventory_refused_without_refresh_or_live(tmp_path: Path):

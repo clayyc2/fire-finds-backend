@@ -62,3 +62,10 @@ class ReadOnlyEbayClient(EbayClient):
         query = urllib.parse.urlencode({"sku": sku})
         result = self._sell_json("GET", f"/inventory/v1/offer?{query}", op="getOffers")
         return result if isinstance(result, dict) else {}
+
+    def get_inventory_item(self, sku):
+        if not isinstance(sku, str) or not sku.strip():
+            raise ValueError("Explicit merchant SKU required")
+        result = self._sell_json("GET", f"/inventory/v1/inventory_item/{urllib.parse.quote(sku, safe='')}",
+                                 op="getInventoryItem")
+        return result if isinstance(result, dict) else {}
