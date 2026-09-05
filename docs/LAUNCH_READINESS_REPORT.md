@@ -75,7 +75,9 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
 - Account privilege, orders, policies, locations and payments reads all passed.
 - 48/48 roster listing IDs matched published offers; zero recent orders returned.
 - Local evidence: `data/verification-20260905-production-correct-host/`.
-- Remaining monthly capacity and current supplier economics are not yet verified.
+- Official remaining allowance was independently read as 4,952 units /
+  CAD 60,753.98. The read must be refreshed and pending publications reserved
+  before use; complete supplier economics remain unverified. See `LISTING_PREFLIGHT.md`.
 - Fresh Randmar catalog: 19,583 rows. Exact supplier-product identity verified
   for all 48 listings against live eBay inventory/offer reads. No below-MAP or
   stock-buffer violation appeared in the snapshot. Buyer-specific delivery
@@ -86,7 +88,7 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
   Evidence and interpretation: `FULFILLMENT_WORKER.md`.
 
 ## Test status
-334 tests passed locally, including failure and concurrency tests. Connected
+346 tests passed locally, including failure and concurrency tests. Connected
 worker tests cover purchase/tracking acceptance followed by timeout, crash
 reconciliation, changed payment/cart/line data, stale stock and quotes, missing
 policy/economics, conflicting manual tracking and no automatic resubmission.
