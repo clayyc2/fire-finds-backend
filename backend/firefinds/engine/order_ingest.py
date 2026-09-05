@@ -7,6 +7,7 @@ Idempotency key = eBay orderId (also Randmar ProcessCartInput.PO).
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -33,6 +34,18 @@ class IngestRecord:
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def as_audit_dict(self) -> dict[str, Any]:
+        """Return operational metadata without buyer personally identifying data."""
+        return {
+            "ebay_order_id": self.ebay_order_id,
+            "state": self.state,
+            "sku": self.sku,
+            "qty": self.qty,
+            "reason": self.reason,
+            "ship_to_present": any(bool(v) for v in self.ship_to.values()),
+            "ship_to_fields_present": sorted(k for k, v in self.ship_to.items() if v),
+        }
 
 
 def map_ebay_order(order: Mapping[str, Any]) -> IngestRecord:
@@ -99,35 +112,36 @@ class OrderIngest:
         tmp = self.store.with_suffix(self.store.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(self.store)
+        os.chmod(self.store, 0o600)
 
     def ingest(self, order: Mapping[str, Any]) -> IngestRecord:
         oid = str(order.get("orderId") or order.get("order_id") or "").strip()
         if not oid:
             rec = IngestRecord("", BLOCKED, reason="missing_order_id")
-            self.audit.write("order_ingest_blocked", rec.as_dict())
+            self.audit.write("order_ingest_blocked", rec.as_audit_dict())
             return rec
         existing = self.records.get(oid)
         if existing and existing.state in TERMINAL:
-            self.audit.write("order_ingest_replay", existing.as_dict())
+            self.audit.write("order_ingest_replay", existing.as_audit_dict())
             return existing
         rec = IngestRecord(oid, SEEN)
-        self.audit.write("order_ingest_seen", rec.as_dict())
+        self.audit.write("order_ingest_seen", rec.as_audit_dict())
         mapped = map_ebay_order(order)
         if mapped.state == BLOCKED:
             self.records[oid] = mapped
             self._save()
-            self.audit.write("order_ingest_blocked", mapped.as_dict())
+            self.audit.write("order_ingest_blocked", mapped.as_audit_dict())
             return mapped
         rec = mapped
         rec.state = MAPPED
-        self.audit.write("order_ingest_mapped", rec.as_dict())
+        self.audit.write("order_ingest_mapped", rec.as_audit_dict())
         rec.state = ROUTED_OFF
         rec.reason = "supplier_orders_disabled"
         if self.settings.supplier_orders_enabled and not self.settings.dry_run and not self.settings.global_kill_switch:
             rec.reason = "submit_refused_by_router_policy"
         self.records[oid] = rec
         self._save()
-        self.audit.write("order_ingest_routed_off", rec.as_dict())
+        self.audit.write("order_ingest_routed_off", rec.as_audit_dict())
         return rec
 
 

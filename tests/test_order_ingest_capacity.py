@@ -1,4 +1,6 @@
 from decimal import Decimal as D
+import json
+import stat
 
 from firefinds.config import Settings
 from firefinds.engine.capacity_live import apply_live_caps, parse_privilege_payload
@@ -56,3 +58,13 @@ def test_ingest_seen_mapped_routed_off(tmp_path):
     assert report["publish_called"] is False
     assert report["sku"] == "SKU1"
     assert report["replay"] is True
+
+    audit_text = (tmp_path / "a.jsonl").read_text(encoding="utf-8")
+    assert "Buyer" not in audit_text
+    assert "1 St" not in audit_text
+    assert "T2P1J9" not in audit_text
+    events = [json.loads(line) for line in audit_text.splitlines()]
+    assert any(event["detail"].get("ship_to_present") for event in events)
+
+    mode = stat.S_IMODE((tmp_path / "orders.json").stat().st_mode)
+    assert mode == 0o600
