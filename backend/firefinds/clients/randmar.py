@@ -534,17 +534,32 @@ class RandmarClient:
                 "GLOBAL_KILL_SWITCH is true; refusing to place order"
             )
         from urllib.parse import quote
-        url = self._reseller_path(f"/Cart/Process/{quote(cart_name, safe='')}")
+        url = self._reseller_path(f"/Cart/ProcessNew/{quote(cart_name, safe='')}")
         return self._request_json(
             "POST", url, data=json.dumps(payload).encode("utf-8"), timeout=120,
-            label="Randmar Cart/Process",
+            label="Randmar Cart/ProcessNew",
         )
+
+    def get_order_by_po(self, reseller_po_number: str) -> Any:
+        """Read an existing order by our immutable eBay order id/PO."""
+        from urllib.parse import quote
+        url = self._reseller_path(
+            f"/Order/PONumber/{quote(reseller_po_number, safe='')}"
+        )
+        return self._request_json("GET", url, timeout=60, label="Randmar Order/PO")
 
     def get_order(self, order_number: str) -> Any:
         """Read Randmar order status/tracking; never mutates supplier state."""
         from urllib.parse import quote
         url = self._reseller_path(f"/Order/{quote(order_number, safe='')}")
         return self._request_json("GET", url, timeout=60, label="Randmar Order/GET")
+
+    def list_shipments(self) -> Any:
+        """Read shipment/tracking rows; never mutates supplier state."""
+        url = self._reseller_path("/Orders/Shipments")
+        return self._request_json(
+            "GET", url, timeout=60, label="Randmar Orders/Shipments"
+        )
 
     def place_order(
         self,

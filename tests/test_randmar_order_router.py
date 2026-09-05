@@ -28,7 +28,7 @@ def test_process_cart_uses_supported_boundary(monkeypatch):
     result = client.process_cart("ebay-123", {"PurchaseOrder": "123"})
     assert result["OrderNumber"] == "R-1"
     assert captured["method"] == "POST"
-    assert captured["url"].endswith("/Cart/Process/ebay-123")
+    assert captured["url"].endswith("/Cart/ProcessNew/ebay-123")
 
 
 def test_get_order_is_read_only(monkeypatch):
@@ -37,3 +37,13 @@ def test_get_order_is_read_only(monkeypatch):
     monkeypatch.setattr(client, "_request_json", lambda method, url, **kw: captured.update(method=method, url=url) or {})
     client.get_order("R/1")
     assert captured["method"] == "GET" and captured["url"].endswith("/Order/R%2F1")
+
+
+def test_order_reads(monkeypatch):
+    client = RandmarClient(Settings())
+    calls = []
+    monkeypatch.setattr(client, "_request_json", lambda method, url, **kw: calls.append((method, url)) or {})
+    client.get_order_by_po("EB/1")
+    client.list_shipments()
+    assert calls[0][1].endswith("/Order/PONumber/EB%2F1")
+    assert calls[1][1].endswith("/Orders/Shipments")
