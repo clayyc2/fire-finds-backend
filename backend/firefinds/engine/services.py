@@ -22,7 +22,7 @@ class RandmarImporter:
         out = []
         for r in rows:
             sku = str(r["sku"]).strip().upper()
-            out.append(Candidate(sku, D(str(r["cost"])), None if r.get("shipping") is None else D(str(r["shipping"])), int(r.get("stock",0)), None if r.get("map") is None else D(str(r["map"])), None if r.get("competitor_price") is None else D(str(r["competitor_price"])), bool(r.get("channel_allowed",False)), bool(r.get("return_risk",False)), D(str(r.get("demand_score",0))), D(str(r.get("competition_score",0)))))
+            out.append(Candidate(sku, D(str(r["cost"])), None if r.get("shipping") is None else D(str(r["shipping"])), int(r.get("stock",0)), None if r.get("map") is None else D(str(r["map"])), None if r.get("competitor_price") is None else D(str(r.get("competitor_price"))), bool(r.get("channel_allowed",False)), bool(r.get("return_risk",False)), D(str(r.get("demand_score",0))), D(str(r.get("competition_score",0)))))
         self.audit.write("randmar_import", {"count": len(out)})
         return out
 
@@ -75,8 +75,10 @@ class OrderRouter:
         self.seen=self._load()
     def _load(self) -> set[str]:
         if not self.checkpoint or not self.checkpoint.is_file(): return set()
-        try: return set(json.loads(self.checkpoint.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError): return set()
+        try:
+            return set(json.loads(self.checkpoint.read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError):
+            return set()
     def _save(self) -> None:
         if not self.checkpoint: return
         self.checkpoint.parent.mkdir(parents=True, exist_ok=True)
