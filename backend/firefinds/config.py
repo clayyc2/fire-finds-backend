@@ -166,6 +166,7 @@ class Settings:
     ebay_user_refresh_token_file: Path | None = DEFAULT_EBAY_USER_REFRESH_TOKEN_FILE
     ebay_marketplace_id: str = "EBAY_CA"
     ebay_sandbox_publish_enabled: bool = False
+    ebay_tracking_updates_enabled: bool = False
     ebay_browse_use_production: bool = True
     ebay_compete_strategy: str = "min_map_median"
     ebay_compete_median_factor: float = 0.98
@@ -276,6 +277,9 @@ class Settings:
             or "EBAY_CA",
             ebay_sandbox_publish_enabled=_env_bool(
                 "EBAY_SANDBOX_PUBLISH_ENABLED", False
+            ),
+            ebay_tracking_updates_enabled=_env_bool(
+                "EBAY_TRACKING_UPDATES_ENABLED", False
             ),
             ebay_browse_use_production=_env_bool(
                 "EBAY_BROWSE_USE_PRODUCTION", True

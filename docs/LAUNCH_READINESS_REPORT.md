@@ -28,18 +28,20 @@ Generated: `2026-09-05`
 | Randmar shipping quote | **PASS** | Probe cart returned 200 and supported carrier method IDs |
 | Randmar `ProcessNew` | **NOT RUN** | Intentionally hard-gated; no supplier order or payment created |
 | Randmar PO dedupe/tracking | **PENDING E2E** | Client methods implemented; authenticated lifecycle evidence still required |
-| eBay paid-order ingest/fulfillment | **PENDING E2E** | Must pass Sandbox order, tracking, and replay/idempotency lifecycle |
+| eBay paid-order ingest/fulfillment | **IMPLEMENTED; PENDING E2E** | Official order, privilege, policy, location, payment-program, existing-fulfillment, and tracking wrappers added; tracking defaults OFF |
 
 ## Clay-only remaining
 1. Complete the no-purchase Randmar PO lookup and shipment-read probes.
-2. Complete eBay Sandbox paid-order ingest, supplier-order simulation, tracking,
+2. Run read-only eBay Sandbox probes for privileges, empty orders, policies,
+   locations, existing fulfillments, and payments status.
+3. Complete eBay Sandbox paid-order ingest, supplier-order simulation, tracking,
    fulfillment update, duplicate replay, retry, and checkpoint-resume tests.
-3. Re-run the full unit suite in a clean environment.
-4. **Explicit go-live authorization** before any production publish or supplier
+4. Re-run the full unit suite in a clean environment.
+5. **Explicit go-live authorization** before any production publish or supplier
    order — sign `docs/CLAY_GO_LIVE_AUTHORIZATION_BRIEF.md` only after the lifecycle
    above passes.
-5. Optional: Production keys-page visual confirm if still desired (API Browse already PASS).
-6. Sandbox website seller registration remains blocked by eBay SORRY/Akamai —
+6. Optional: Production keys-page visual confirm if still desired (API Browse already PASS).
+7. Sandbox website seller registration remains blocked by eBay SORRY/Akamai —
    **not required** for Offer E2E anymore.
 
 ## Do not

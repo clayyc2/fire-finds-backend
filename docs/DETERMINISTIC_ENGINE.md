@@ -15,6 +15,9 @@ reprice, reserve capacity, or place an order.
    or competition changes.
 5. **Order Router** deduplicates paid orders and refuses supplier submission in
    dry-run, with the global kill switch on, or while supplier ordering is off.
+   It reads paid eBay orders and existing fulfillments through the official
+   Fulfillment API. Tracking submission has a separate default-off
+   `EBAY_TRACKING_UPDATES_ENABLED` gate, plus dry-run and the global kill switch.
 6. **Discovery/Refresh Engine** composes import, evaluation and capacity into a
    repeatable refresh pass.
 

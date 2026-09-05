@@ -57,6 +57,10 @@ class EbayPublishDisabled(RuntimeError):
     """Raised when sandbox publish is gated off."""
 
 
+class EbayFulfillmentDisabled(RuntimeError):
+    """Raised when a tracking/fulfillment mutation is gated off."""
+
+
 class EbayUserOAuthNotConfigured(RuntimeError):
     """Raised when RuName or user refresh token is missing."""
 
@@ -912,6 +916,121 @@ class EbayClient:
         )
         return result if isinstance(result, dict) else {"ok": True, "offerId": oid}
 
+    # --- Sell Fulfillment (paid-order reads + separately gated tracking) ---
+
+    def get_orders(
+        self, *, filter_expr: str | None = None, limit: int = 50, offset: int = 0
+    ) -> dict[str, Any]:
+        """Read eBay orders through the official Fulfillment API."""
+        params = {"limit": str(max(1, min(int(limit), 200))), "offset": str(max(0, int(offset)))}
+        if filter_expr:
+            params["filter"] = str(filter_expr)
+        result = self._sell_json(
+            "GET", f"/fulfillment/v1/order?{urllib.parse.urlencode(params)}", op="getOrders"
+        )
+        return result if isinstance(result, dict) else {"orders": []}
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        """Read one eBay order; this never mutates buyer or listing state."""
+        oid = str(order_id or "").strip()
+        if not oid:
+            raise ValueError("order_id is required")
+        result = self._sell_json(
+            "GET", f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}", op="getOrder"
+        )
+        return result if isinstance(result, dict) else {}
+
+    def list_shipping_fulfillments(self, order_id: str) -> dict[str, Any]:
+        """Read tracking fulfillments already recorded for an order."""
+        oid = str(order_id or "").strip()
+        if not oid:
+            raise ValueError("order_id is required")
+        result = self._sell_json(
+            "GET",
+            f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}/shipping_fulfillment",
+            op="getShippingFulfillments",
+        )
+        return result if isinstance(result, dict) else {"fulfillments": []}
+
+    def get_privileges(self) -> dict[str, Any]:
+        """Read seller privileges/limits for capacity decisions."""
+        result = self._sell_json("GET", "/account/v1/privilege", op="getPrivileges")
+        return result if isinstance(result, dict) else {}
+
+    def get_business_policies(self) -> dict[str, dict[str, Any]]:
+        """Read existing EBAY_CA policies without creating or changing them."""
+        qs = urllib.parse.urlencode({"marketplace_id": self.settings.ebay_marketplace_id})
+        out: dict[str, dict[str, Any]] = {}
+        for name in ("payment_policy", "return_policy", "fulfillment_policy"):
+            result = self._sell_json(
+                "GET", f"/account/v1/{name}?{qs}", op=f"get{name.title().replace('_', '')}"
+            )
+            out[name] = result if isinstance(result, dict) else {}
+        return out
+
+    def list_inventory_locations(self, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        """Read merchant inventory locations used by Inventory offers."""
+        qs = urllib.parse.urlencode({
+            "limit": str(max(1, min(int(limit), 100))),
+            "offset": str(max(0, int(offset))),
+        })
+        result = self._sell_json("GET", f"/inventory/v1/location?{qs}", op="getInventoryLocations")
+        return result if isinstance(result, dict) else {"locations": []}
+
+    def get_payments_program(self, payments_program_type: str = "EBAY_PAYMENTS") -> dict[str, Any]:
+        """Read managed-payments enrollment; never changes financial settings."""
+        market = urllib.parse.quote(self.settings.ebay_marketplace_id, safe="")
+        program = urllib.parse.quote(str(payments_program_type).strip(), safe="")
+        result = self._sell_json(
+            "GET", f"/account/v1/payments_program/{market}/{program}", op="getPaymentsProgram"
+        )
+        return result if isinstance(result, dict) else {}
+
+    def create_shipping_fulfillment(
+        self,
+        order_id: str,
+        *,
+        carrier_code: str,
+        tracking_number: str,
+        line_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Post tracking only when its independent mutation gate is enabled."""
+        if (
+            self.settings.dry_run
+            or self.settings.global_kill_switch
+            or not self.settings.ebay_tracking_updates_enabled
+        ):
+            raise EbayFulfillmentDisabled(
+                "Tracking update refused: DRY_RUN/GLOBAL_KILL_SWITCH is active or "
+                "EBAY_TRACKING_UPDATES_ENABLED is false"
+            )
+        if self.settings.ebay_env == "production" and (
+            not self.settings.ebay_production_enabled
+            or not self.settings.live_listings_enabled
+        ):
+            raise EbayFulfillmentDisabled(
+                "Production fulfillment requires EBAY_PRODUCTION_ENABLED and "
+                "LIVE_LISTINGS_ENABLED"
+            )
+        oid = str(order_id or "").strip()
+        carrier = str(carrier_code or "").strip()
+        tracking = str(tracking_number or "").strip()
+        if not oid or not carrier or not tracking:
+            raise ValueError("order_id, carrier_code, and tracking_number are required")
+        body: dict[str, Any] = {
+            "shippingCarrierCode": carrier,
+            "trackingNumber": tracking,
+        }
+        if line_items:
+            body["lineItems"] = line_items
+        result = self._sell_json(
+            "POST",
+            f"/fulfillment/v1/order/{urllib.parse.quote(oid, safe='')}/shipping_fulfillment",
+            body=body,
+            op="createShippingFulfillment",
+        )
+        return result if isinstance(result, dict) else {"ok": True, "orderId": oid}
+
     def sandbox_status(self) -> dict[str, Any]:
         """Safe status dict (no secrets) for CLI ebay-sandbox-status."""
         cid, secret = self._load_credentials()
@@ -921,6 +1040,7 @@ class EbayClient:
             "live_listings_enabled": self.settings.live_listings_enabled,
             "ebay_production_enabled": self.settings.ebay_production_enabled,
             "ebay_sandbox_publish_enabled": self.settings.ebay_sandbox_publish_enabled,
+            "ebay_tracking_updates_enabled": self.settings.ebay_tracking_updates_enabled,
             "ebay_browse_use_production": self.settings.ebay_browse_use_production,
             "credentials_present": bool(cid and secret),
             "client_id_set": bool(cid),
