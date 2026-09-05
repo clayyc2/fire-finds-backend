@@ -114,7 +114,7 @@ def test_safe_price_cannot_be_cut_below_map_or_target():
     settings = Settings(target_profit_pct=.25)
     c = Candidate("A", D("20"), D("10"), 10, map_price=D("70"), competitor_price=D("69"), channel_allowed=True)
     decision = OpportunityEngine(settings).evaluate(c)
-    assert not decision.allowed
+    assert decision.allowed and decision.reason == "FLOOR_ABOVE_COMPETITION"
     assert decision.price >= 70
     c = Candidate("A", D("20"), D("10"), 10, channel_allowed=True)
     decision = OpportunityEngine(settings).evaluate(c)

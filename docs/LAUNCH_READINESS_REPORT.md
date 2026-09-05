@@ -38,7 +38,12 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
 - Capacity counts units and price times units, preserves headroom/used capacity,
   handles explicit zero, and refuses allocation if either cap is unknown.
   Configured caps support planning, not proof of actual account limits.
-- Pricing rounds upward and blocks competition below MAP/profit/target floors.
+- Pricing preserves MAP and both profit floors, then keeps competitive upside:
+  default C$0.01 below a verified comparable offer when that is above the floor.
+  If competitors are cheaper, the safe floor wins. See `OPERATING_POLICY.md`.
+- Shared supplier-cash reservations enforce C$2,500/day (America/Edmonton),
+  including in-flight/uncertain charges. Restarts cannot reset the allowance;
+  concurrency and midnight/uncertainty behavior are covered by tests.
 - Bounded eBay GET retries honor Retry-After up to 60 seconds; longer delays
   stop the sweep for a later invocation. No 429/5xx POST retry was added.
 
@@ -81,7 +86,7 @@ verification. Grok/Grok Bots are retired from Fire Finds execution.
   Evidence and interpretation: `FULFILLMENT_WORKER.md`.
 
 ## Test status
-317 tests passed locally, including failure and concurrency tests. Connected
+334 tests passed locally, including failure and concurrency tests. Connected
 worker tests cover purchase/tracking acceptance followed by timeout, crash
 reconciliation, changed payment/cart/line data, stale stock and quotes, missing
 policy/economics, conflicting manual tracking and no automatic resubmission.
@@ -108,7 +113,8 @@ RANDMAR_FIRST SAFE 127 / DEST 25 / QUAR 85 / ranked 152. EBAY_DEMAND_FIRST scaff
 6. Prove the real Sandbox paid-order/tracking lifecycle under the permitted
    test scope. Simulated output is not evidence of a purchase or shipment.
 7. Validate live inventory economics/channel evidence and the demand source;
-   separately review a controlled supplier test and production activation.
+   separately review a controlled supplier test. Clay has conditionally approved
+   automatic activation once readiness is proven under `OPERATING_POLICY.md`.
    Existing live listings continue to require manual fulfillment.
 
 ## Gates that stay false

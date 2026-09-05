@@ -20,6 +20,7 @@ from firefinds.engine.storage import atomic_json, checkpoint_lock
 from .preview import prepare_fulfillment
 from .tracking import prepare_tracking
 from .tracking_delivery import TrackingDelivery
+from .spend_budget import DailySupplierBudget
 from .randmar_checkout import cart_name_for
 
 
@@ -54,6 +55,7 @@ class CheckoutEvidence:
     total_landed_cost: D | None = None
     total_fee_upper_bound: D | None = None
     catalog_observed_at: float | None = None
+    supplier_charge_upper_bound_cad: D | None = None
 
 
 class FulfillmentWorker:
@@ -66,6 +68,7 @@ class FulfillmentWorker:
         self.mapping, self.carriers, self.clock = dict(sku_mapping), dict(carrier_mapping), clock
         self.router = OrderRouter(settings, audit, self.root / "submissions.json")
         self.tracking = TrackingDelivery(settings, audit, self.root / "tracking.json")
+        self.budget = DailySupplierBudget(settings, self.root / "supplier_spend.json", clock)
 
     def _result(self, oid, state, reason):
         result = {"order_id": oid, "state": state, "reason": reason}
@@ -135,8 +138,17 @@ class FulfillmentWorker:
         facts = {"supplier_sku": preview.supplier_sku, "merchant_sku": record.sku,
                  "quantity": record.qty, "line_item_id": order["lineItems"][0]["lineItemId"]}
         atomic_json(self.root / (hashlib.sha256(oid.encode()).hexdigest() + ".facts.json"), facts)
-        self.router.route({"order_id": oid},
-                          lambda _: self.supplier.process_cart(cart_name_for(oid), preview.payload))
+        def guarded_purchase():
+            result = self.router.route({"order_id": oid},
+                lambda _: self.supplier.process_cart(cart_name_for(oid), preview.payload))
+            if self.router._load().get(oid, {}).get("state") != "SUBMITTED":
+                # A guard refusal or unknown outcome must NOT settle the cash
+                # reservation and release its carry-forward protection.
+                raise RuntimeError("Supplier submission remains unconfirmed")
+            return result
+        spending = self.budget.execute(oid, evidence.supplier_charge_upper_bound_cad, guarded_purchase)
+        if not spending["allowed"]:
+            return self._result(oid, "HELD", spending["reason"])
         return self._resume(oid, refreshed, self.router._load()[oid])
 
     def _validate_evidence(self, order, record, evidence):
@@ -188,6 +200,10 @@ class FulfillmentWorker:
             return "incomplete_order_costs"
         if evidence.total_landed_cost < (candidate.cost + candidate.shipping) * record.qty:
             return "landed_cost_understated"
+        cash = evidence.supplier_charge_upper_bound_cad
+        if (not isinstance(cash, D) or not cash.is_finite() or
+                cash < (candidate.cost + candidate.shipping) * record.qty or cash <= 0):
+            return "supplier_cash_upper_bound_unresolved"
         minimum_fees = revenue * D(str(self.s.ebay_fee_rate)) + D(str(self.s.ebay_fee_fixed))
         if evidence.total_fee_upper_bound < minimum_fees:
             return "fees_understated"
@@ -222,6 +238,7 @@ class FulfillmentWorker:
             if outcome != "reconciled":
                 return self._result(oid, "HELD", "supplier_reconciliation_required")
             submitted = self.router._load()[oid]
+        self.budget.confirm(oid)
         prepared = prepare_tracking(order=order, supplier_sku=facts["supplier_sku"],
                                     supplier_order_number=submitted.get("supplier_order_number"),
                                     shipments=self.supplier.list_shipments(), carrier_mapping=self.carriers)

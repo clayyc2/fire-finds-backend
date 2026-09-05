@@ -5,7 +5,7 @@ and net unit sale revenue (after discounts, excluding collected tax).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal as D
 from typing import Any, Mapping
 
@@ -55,7 +55,10 @@ def prepare_fulfillment(*, settings, order: Mapping[str, Any],
     if not age.is_finite() or max_quote_age_sec <= 0 or not D("0") <= age <= max_quote_age_sec:
         result.reason = "stale_or_invalid_supplier_quote"
         return result
-    decision = OpportunityEngine(settings).evaluate(supplier)
+    # An already-paid order must clear the profit floor, not a competitor's
+    # newer asking price. Never reject profitable fulfillment because another
+    # seller raised its price after the buyer checked out.
+    decision = OpportunityEngine(settings).evaluate(replace(supplier, competitor_price=None))
     if not decision.allowed:
         result.reason = decision.reason
         return result

@@ -84,7 +84,7 @@ def rig(tmp_path):
         D(80), "GROUND", cart, channel_evidence="fixture-approved", returns_evidence="fixture-approved",
         map_evidence="fixture-none", shipping_service_evidence="fixture-on-time", economics_evidence="fixture-costs",
         opportunity_only=False, currency="CAD", total_landed_cost=D(35), total_fee_upper_bound=D(12),
-        catalog_observed_at=1000)
+        catalog_observed_at=1000, supplier_charge_upper_bound_cad=D(35))
     ebay, supplier = Ebay(order), Supplier(order, copy.deepcopy(cart))
     settings = replace(Settings(), dry_run=False, global_kill_switch=False,
                        supplier_orders_enabled=True, ebay_tracking_updates_enabled=True)
@@ -245,3 +245,23 @@ def test_missing_cancellation_status_is_not_permission_to_buy(rig):
     rig[2].order.pop("cancelStatus")
     assert run(rig)["reason"] == "cancellation_status_unresolved"
     assert rig[3].posts == 0
+
+
+def test_cash_cap_holds_before_supplier_submission_intent(rig):
+    rig[0].budget.limit = D(10)
+    assert run(rig)["reason"] == "daily_supplier_spend_limit"
+    assert rig[3].posts == 0
+    assert not (rig[0].root / "submissions.json").exists()
+
+
+def test_fulfillment_checks_floor_not_new_competitor_asking_price(rig):
+    worker, evidence, ebay, _ = rig
+    evidence = replace(evidence, supplier=replace(evidence.supplier, competitor_price=D(300)))
+    assert worker.run_order(ebay.order["orderId"], lambda _: evidence)["reason"] == "tracking_confirmation_pending"
+
+
+def test_missing_cash_quote_is_held(rig):
+    worker, evidence, ebay, supplier = rig
+    evidence = replace(evidence, supplier_charge_upper_bound_cad=None)
+    assert worker.run_order(ebay.order["orderId"], lambda _: evidence)["reason"] == "supplier_cash_upper_bound_unresolved"
+    assert supplier.posts == 0

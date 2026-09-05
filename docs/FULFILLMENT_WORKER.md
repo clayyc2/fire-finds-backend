@@ -45,7 +45,8 @@ an offline check cannot make stale stock fresh.
    and minimum contribution profit using complete order costs.
 4. Reconcile the supplier PO, re-read eBay immediately before purchase, and
    re-read the cart. Changed payment/address/discount/cart evidence holds.
-5. Persist purchase facts and submission intent before one supplier attempt.
+5. Reserve supplier cash against the C$2,500 Edmonton-day ceiling, and persist
+   purchase facts and submission intent before one supplier attempt.
    A timeout/crash never causes a second automatic purchase. Recovery requires
    exact PO/order and SKU/quantity evidence; empty lookup never releases retry.
 6. Match the full shipment to the purchased line and explicit carrier mapping.
@@ -94,6 +95,7 @@ evidence. Exit 2 means an incomplete sweep or an order needing attention.
 - [ ] Multi-line orders and partial shipments (currently held safely).
 - [ ] Always-on deployment, durable backups, alert destination, restart drills.
 - [ ] Remaining-capacity collection/reservations and discovery/repricing loops.
-- [ ] Explicit scoped production activation after evidence review.
+- [x] Conditional activation authority received under `OPERATING_POLICY.md`;
+  the actual readiness evaluation and activation remain incomplete.
 
 Until these are complete, a published listing does not imply auto fulfillment.

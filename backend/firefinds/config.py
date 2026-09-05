@@ -138,6 +138,9 @@ class Settings:
     dry_run: bool = True
     global_kill_switch: bool = True
     target_profit_pct: float = 0.18
+    competitor_undercut_cad: float = 0.01
+    daily_supplier_spend_limit_cad: float = 2500.0
+    supplier_spend_timezone: str = "America/Edmonton"
     capacity_policy: str = "balanced"  # balanced | item_first | value_first
     capacity_headroom_pct: float = 0.05
     monthly_item_limit: int = 0
@@ -193,7 +196,7 @@ class Settings:
     return_risk_heavy_weight_lb: float = 30.0
     return_risk_high_msrp_cad: float = 1500.0
     min_contribution_profit_cad: float = 8.0
-    min_contribution_margin: float = 0.12
+    min_contribution_margin: float = 0.18
     stock_buffer: int = 2
     ebay_fee_rate: float = 0.1325
     ebay_fee_fixed: float = 0.30
@@ -231,6 +234,9 @@ class Settings:
             dry_run=_env_bool("DRY_RUN", True),
             global_kill_switch=_env_bool("GLOBAL_KILL_SWITCH", True),
             target_profit_pct=_env_float("TARGET_PROFIT_PCT", 0.18),
+            competitor_undercut_cad=_env_float("COMPETITOR_UNDERCUT_CAD", 0.01),
+            daily_supplier_spend_limit_cad=_env_float("DAILY_SUPPLIER_SPEND_LIMIT_CAD", 2500.0),
+            supplier_spend_timezone=os.environ.get("SUPPLIER_SPEND_TIMEZONE", "America/Edmonton"),
             capacity_policy=os.environ.get("CAPACITY_POLICY", "balanced"),
             capacity_headroom_pct=_env_float("CAPACITY_HEADROOM_PCT", 0.05),
             monthly_item_limit=_env_int("MONTHLY_ITEM_LIMIT", 0),
@@ -320,7 +326,7 @@ class Settings:
             min_contribution_profit_cad=_env_float(
                 "MIN_CONTRIBUTION_PROFIT_CAD", 8.0
             ),
-            min_contribution_margin=_env_float("MIN_CONTRIBUTION_MARGIN", 0.12),
+            min_contribution_margin=_env_float("MIN_CONTRIBUTION_MARGIN", 0.18),
             stock_buffer=_env_int("STOCK_BUFFER", 2),
             ebay_fee_rate=_env_float("EBAY_FEE_RATE", 0.1325),
             ebay_fee_fixed=_env_float("EBAY_FEE_FIXED", 0.30),
